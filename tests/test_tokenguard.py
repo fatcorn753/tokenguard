@@ -119,3 +119,34 @@ class InstallTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SimulateTest(unittest.TestCase):
+    def make(self, n=400, step=2_000, base=70_000):
+        s = T.Session(sid="x", path=Path("x"))
+        for i in range(n):
+            ctx = base + i * step
+            s.calls.append(T.Call("t", "m", 0, step, ctx - step, 100))
+        return s
+
+    def test_baseline_matches_real(self):
+        from tokenguard.simulate import Scenario, simulate
+        s = self.make()
+        r = simulate([s], Scenario("real", None))
+        self.assertAlmostEqual(r.weighted, s.weighted, delta=1)
+        self.assertEqual(r.compactions, 0)
+
+    def test_window_cuts_cost_and_caps_context(self):
+        from tokenguard.simulate import BUFFER, Scenario, simulate
+        s = self.make()
+        r = simulate([s], Scenario("200k", 200_000))
+        self.assertGreater(r.compactions, 0)
+        self.assertLess(r.weighted, s.weighted)
+        self.assertLessEqual(r.ctx_sum / r.calls, 200_000 - BUFFER)
+
+    def test_real_compaction_is_respected(self):
+        from tokenguard.simulate import Scenario, simulate
+        s = self.make(n=10)
+        s.calls.append(T.Call("t", "m", 0, 1000, 70_000, 10))  # 実ログで compact が起きた
+        r = simulate([s], Scenario("real", None))
+        self.assertAlmostEqual(r.weighted, s.weighted, delta=1)

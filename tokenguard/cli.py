@@ -3,6 +3,7 @@
 使い方:
   tokenguard report [--days 14] [--top 10]   全体の内訳・重いセッション・重いツール
   tokenguard trend  [--days 28]              日ごとの消費と平均文脈の推移(対策の効果確認用)
+  tokenguard simulate [--window 200000 300000]  過去ログを別の窓で再計算し、節約量を見積もる
   tokenguard session <id の先頭>             1 セッションの文脈の伸び方
   tokenguard ctx <transcript.jsonl>          直近の文脈サイズ(hook のデバッグ用)
 """
@@ -107,6 +108,23 @@ def cmd_trend(a) -> None:
         print(f"{d} {len(cs):6d} {_m(sum(c.weighted for c in cs)):>9s} {_m(statistics.mean(c.context for c in cs)):>9s}")
 
 
+def cmd_simulate(a) -> None:
+    from .simulate import scenarios, simulate
+    ss = T.load(a.days)
+    print(f"# 直近 {a.days:g} 日の会話ログを、autoCompactWindow を変えて再計算")
+    print("  画像縮小・/handoff による分割は含めない(節約は少なめに出る)。品質の変化は測れない\n")
+    rows = []
+    for w in a.window:
+        for sc in scenarios(w):
+            if sc.window is None and rows:
+                continue
+            rows.append((sc, simulate(ss, sc)))
+    base = rows[0][1].weighted
+    print(f"{'条件':40s} {'重み付き':>9s} {'差':>6s} {'平均文脈':>8s} {'compact':>8s}")
+    for sc, r in rows:
+        print(f"{sc.name:40s} {_m(r.weighted):>9s} {r.weighted / base - 1:+6.0%} {_m(r.ctx_sum / max(r.calls, 1)):>8s} {r.compactions:8d}")
+
+
 def cmd_session(a) -> None:
     hits = [p for p in T.PROJECTS.rglob(f"{a.sid}*.jsonl")]
     if not hits:
@@ -127,6 +145,9 @@ def main(argv=None) -> None:
     r.add_argument("--top", type=int, default=10)
     t = sp.add_parser("trend")
     t.add_argument("--days", type=float, default=28)
+    si = sp.add_parser("simulate")
+    si.add_argument("--days", type=float, default=14)
+    si.add_argument("--window", type=int, nargs="+", default=[200_000, 300_000])
     se = sp.add_parser("session")
     se.add_argument("sid")
     cx = sp.add_parser("ctx")
@@ -135,7 +156,7 @@ def main(argv=None) -> None:
     if a.cmd == "ctx":
         print(T.last_context(a.transcript))
         return
-    {"report": cmd_report, "trend": cmd_trend, "session": cmd_session}[a.cmd](a)
+    {"report": cmd_report, "trend": cmd_trend, "simulate": cmd_simulate, "session": cmd_session}[a.cmd](a)
 
 
 if __name__ == "__main__":
