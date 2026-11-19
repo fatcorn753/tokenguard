@@ -1,9 +1,22 @@
 # tokenguard
 
 Claude Code のトークン消費を、品質を落とさずに減らすための道具一式。
-計測 → 文脈の上限 → 区切りの促し → 引き継ぎ → 画像の縮小、の順に効く。
+計測 → 文脈の上限 → 区切りの促し → 引き継ぎ → 画像の縮小、の順に効く。依存は Python 標準ライブラリだけ。
 
-## 根拠(2026-11-19 の計測。直近 14 日・278 会話)
+## まず自分の環境で測る
+
+効く対策は使い方で変わる。導入する前に、自分の会話ログ(`~/.claude/projects/`)で測る。
+ログは手元で読むだけで、外部には送らない。
+
+```bash
+git clone https://github.com/fatcorn753/tokenguard && cd tokenguard
+bin/tokenguard report      # 費用の内訳・重い会話・重いツール・診断
+bin/tokenguard simulate    # 窓を 200k / 300k にした場合の見積もり
+```
+
+`report` の診断で「cache read が費用の 4 割超」と出たら、この道具の効果が大きい。
+
+## 根拠(作者の環境。2026-11-19 の計測、直近 14 日・278 会話)
 
 | 項目 | 値 |
 |---|---|
@@ -45,6 +58,9 @@ compact 後の要約の大きさ(中央値 6k、p75 16k)は、実ログで compa
 
 ## 導入と解除
 
+必要なもの: `autoCompactWindow` 設定に対応した Claude Code(動作確認は 2.1.319)、Python 3.10 以降。
+画像の縮小は macOS の `sips` を使う。macOS 以外では何もせず、原寸のまま読ませる。
+
 ```bash
 python3 install.py            # settings.json を .bak に残してから書き換える
 python3 install.py --window 300000
@@ -52,6 +68,19 @@ python3 install.py --uninstall
 ```
 
 既存の hook はそのまま残る。何度実行しても同じ状態になる。解除すると、autoCompactWindow は導入前の値に戻る。
+導入すると、次のものが入る:
+- `~/.claude/settings.json` の `autoCompactWindow` と、2 つの hook
+- `~/.claude/skills/handoff`(このリポジトリへのシンボリックリンク)
+- `~/.local/bin/tokenguard`(同上)
+
+導入後に始めた会話から効く。引き継ぎファイルは `~/.claude/handoffs/` に書かれる。
+
+## 注意
+
+- 窓を小さくすると compact が増え、長い作業の途中の細かい記憶は薄れる。区切りでは `/handoff` を使う
+- 文脈を区切るよう促す注入文は、段階ごとに 1 回、80 字ほど。毎回は入れない
+- 料金の比率は API 単価(cache read 0.1 倍・cache write 1.25 倍・output 5 倍)に基づく。
+  サブスクリプションの使用量の上限が、同じ比率で数えられているかは公開されていない
 
 ## 試験
 
@@ -67,3 +96,7 @@ python3 -m unittest discover tests
 
 - `TOKENGUARD_CTX_STEPS`: 促す段階(既定 `120000,180000,250000,350000`)
 - `TOKENGUARD_IMG_EDGE`: 縮小後の長辺(既定 1280)
+
+## ライセンス
+
+MIT

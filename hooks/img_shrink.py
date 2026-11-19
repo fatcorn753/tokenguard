@@ -9,6 +9,7 @@
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -21,6 +22,8 @@ RETRY_SEC = 600
 
 
 def dims(p: Path):
+    if not shutil.which("sips"):  # macOS 以外では何もしない(原寸のまま読ませる)
+        return None
     r = subprocess.run(["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(p)],
                        capture_output=True, text=True, timeout=10)
     v = [int(line.split()[-1]) for line in r.stdout.splitlines() if "pixel" in line]
