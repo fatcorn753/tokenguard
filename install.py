@@ -39,7 +39,7 @@ def strip_ours(settings: dict) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--uninstall", action="store_true")
-    ap.add_argument("--window", type=int, default=200_000, help="autoCompactWindow (100000〜1000000)")
+    ap.add_argument("--window", type=int, default=300_000, help="autoCompactWindow (100000〜1000000)")
     a = ap.parse_args()
     if not 100_000 <= a.window <= 1_000_000:
         sys.exit("--window は 100000〜1000000")

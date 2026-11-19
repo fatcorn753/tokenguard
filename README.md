@@ -53,7 +53,7 @@ compact 後の要約の大きさ(中央値 6k、p75 16k)は、実ログで compa
 | 部品 | 効き方 |
 |---|---|
 | `tokenguard report / trend / simulate / session` | 内訳・重い会話・重いツールを出す。過去ログを別の窓で再計算する。対策の前後比較に使う |
-| `autoCompactWindow: 200000` | 1M 窓を 200k 窓として扱い、約 167k で compact する。最も効く |
+| `autoCompactWindow: 300000` | 1M 窓を 300k 窓として扱い、約 267k で compact する。最も効く。200k の方が平均では安いが、compact 後の読み直しが多いと逆効果になる |
 | `hooks/ctx_guard.py`(UserPromptSubmit) | 文脈が 120k/180k/250k/350k を超えたら、区切りを提案するよう Claude に一度だけ伝える |
 | `skills/handoff`(`/handoff`) | 作業状態をファイルに書き出し、小さな文脈の新しい会話で続ける。compact より必要な情報を選んで残せる |
 | `hooks/img_shrink.py`(PreToolUse: Read) | 長辺 1280px 超の画像を縮小した複製に差し替える。10 分以内に同じ画像をもう一度 Read すると原寸で通す |
@@ -65,7 +65,7 @@ compact 後の要約の大きさ(中央値 6k、p75 16k)は、実ログで compa
 
 ```bash
 python3 install.py            # settings.json を .bak に残してから書き換える
-python3 install.py --window 300000
+python3 install.py --window 200000   # より攻める場合
 python3 install.py --uninstall
 ```
 

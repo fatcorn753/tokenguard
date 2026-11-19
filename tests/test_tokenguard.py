@@ -108,7 +108,7 @@ class InstallTest(unittest.TestCase):
             for _ in range(2):
                 subprocess.run([sys.executable, str(ROOT / "install.py")], env=env, check=True, capture_output=True)
             s = json.loads(st.read_text())
-            self.assertEqual(s["autoCompactWindow"], 200_000)
+            self.assertEqual(s["autoCompactWindow"], 300_000)
             self.assertEqual(len(s["hooks"]["UserPromptSubmit"]), 2)  # 既存 1 + 自分 1(2 回実行しても増えない)
             self.assertEqual(len(s["hooks"]["PreToolUse"]), 1)
             self.assertNotIn("tokenguard", s)
