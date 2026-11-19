@@ -1,0 +1,4 @@
+#!/bin/sh
+# 計測 CLI の入口。シンボリックリンク経由でもリポジトリを見つける
+ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+PYTHONPATH="$ROOT" exec python3 -m tokenguard.cli "$@"
