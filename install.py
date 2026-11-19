@@ -18,7 +18,8 @@ SETTINGS = CLAUDE / "settings.json"
 SKILL = CLAUDE / "skills" / "handoff"
 BIN = Path.home() / ".local" / "bin" / "tokenguard"
 META = Path.home() / ".cache" / "tokenguard" / "install.json"  # settings.json に未知のキーを足さないため外に置く
-TAG = "tokenguard/hooks/"  # 自分の hook を見分ける目印(コマンド中のパス)
+# 自分の hook を見分ける目印。clone 先のフォルダ名に依らないよう、スクリプト名で見る
+OURS = ("/hooks/ctx_guard.py", "/hooks/img_shrink.py")
 
 HOOKS = {
     "UserPromptSubmit": {"hooks": [{"type": "command", "command": f"python3 {ROOT}/hooks/ctx_guard.py", "timeout": 10}]},
@@ -28,7 +29,7 @@ HOOKS = {
 
 def strip_ours(settings: dict) -> None:
     for event, groups in list(settings.get("hooks", {}).items()):
-        kept = [g for g in groups if not any(TAG in h.get("command", "") for h in g.get("hooks", []))]
+        kept = [g for g in groups if not any(h.get("command", "").endswith(OURS) for h in g.get("hooks", []))]
         if kept:
             settings["hooks"][event] = kept
         else:
