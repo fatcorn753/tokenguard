@@ -150,3 +150,12 @@ class SimulateTest(unittest.TestCase):
         s.calls.append(T.Call("t", "m", 0, 1000, 70_000, 10))  # 実ログで compact が起きた
         r = simulate([s], Scenario("real", None))
         self.assertAlmostEqual(r.weighted, s.weighted, delta=1)
+
+
+class CompactCountTest(unittest.TestCase):
+    def test_boundary_and_summary_count_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "c.jsonl"
+            p.write_text(asst("m1", 10) + line(type="system", subtype="compact_boundary")
+                         + line(type="user", isCompactSummary=True, message={"content": "要約"}))
+            self.assertEqual(T.parse(p).compactions, 1)

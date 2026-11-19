@@ -86,7 +86,8 @@ def parse(path: Path) -> Session:
                 d = json.loads(line)
             except ValueError:
                 continue
-            if d.get("isCompactSummary") or (d.get("type") == "system" and d.get("subtype") == "compact_boundary"):
+            # compact 1 回につき境界行と要約行が両方書かれるので、境界行だけを数える
+            if d.get("type") == "system" and d.get("subtype") == "compact_boundary":
                 s.compactions += 1
             m = d.get("message")
             if not isinstance(m, dict):
