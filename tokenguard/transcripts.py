@@ -13,9 +13,10 @@ from pathlib import Path
 
 PROJECTS = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")) / "projects"
 
-# 入力トークン 1 個を 1 とした相対単価。API 単価の比率(cache write 5 分=1.25 倍、
-# cache read=0.1 倍、output=5 倍)で、モデルが違っても比率は同じ。
-WEIGHTS = {"input": 1.0, "cache_write": 1.25, "cache_read": 0.1, "output": 5.0}
+# 入力トークン 1 個を 1 とした相対単価。API 単価の比率で、モデルが違っても比率は同じ。
+# Claude Code の cache write は 1 時間 TTL(会話ログの ephemeral_1h_input_tokens で確認)なので 2 倍。
+# 5 分 TTL なら 1.25 倍。cache read は 0.1 倍、output は 5 倍。
+WEIGHTS = {"input": 1.0, "cache_write": 2.0, "cache_read": 0.1, "output": 5.0}
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
 

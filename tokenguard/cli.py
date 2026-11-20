@@ -4,6 +4,7 @@
   tokenguard report [--days 14] [--top 10]   全体の内訳・重いセッション・重いツール
   tokenguard trend  [--days 28]              日ごとの消費と平均文脈の推移(対策の効果確認用)
   tokenguard simulate [--window 200000 300000]  過去ログを別の窓で再計算し、節約量を見積もる
+  tokenguard bench [--window ...] [--reps N]    記憶テスト。窓ごとに compact で事実を忘れるかを測る
   tokenguard session <id の先頭>             1 セッションの文脈の伸び方
   tokenguard ctx <transcript.jsonl>          直近の文脈サイズ(hook のデバッグ用)
 """
@@ -125,6 +126,38 @@ def cmd_simulate(a) -> None:
         print(f"{sc.name:40s} {_m(r.weighted):>9s} {r.weighted / base - 1:+6.0%} {_m(r.ctx_sum / max(r.calls, 1)):>8s} {r.compactions:8d}")
 
 
+def cmd_bench(a) -> None:
+    from dataclasses import asdict
+
+    from .bench import WORK, run_trial
+    WORK.mkdir(parents=True, exist_ok=True)
+    out = WORK / "results.jsonl"
+    rows = []
+    for rep in range(a.reps):
+        for w in a.window:  # 条件を交互に回し、時間帯の偏りを減らす
+            tr = run_trial(w, a.seed + rep, a.files, a.model, log=lambda m: print(m, file=sys.stderr))
+            rows.append(tr)
+            with open(out, "a") as f:
+                f.write(json.dumps({**asdict(tr), "model": a.model, "files": a.files}, ensure_ascii=False) + "\n")
+            print(f"{w // 1000}k s{tr.seed}: 正答 {tr.score}/{tr.total} 誤り {tr.wrong} compact {tr.compactions} "
+                  f"最大 {_m(tr.peak)} 重み {_m(tr.weighted)} ${tr.cost_usd:.2f} {tr.seconds:.0f}s {tr.error}", flush=True)
+    print(f"\n結果は {out} に追記した")
+    bench_summary(rows)
+
+
+def bench_summary(rows) -> None:
+    by = collections.defaultdict(list)
+    for r in rows:
+        if not r.error:
+            by[r.window].append(r)
+    print(f"{'窓':>6s} {'試行':>4s} {'正答率':>6s} {'重み平均':>8s} {'USD平均':>8s} {'compact':>7s}")
+    for w in sorted(by):
+        rs = by[w]
+        acc = sum(r.score for r in rs) / max(1, sum(r.total for r in rs))
+        print(f"{w // 1000:5d}k {len(rs):4d} {acc:6.0%} {_m(statistics.mean(r.weighted for r in rs)):>8s} "
+              f"{statistics.mean(r.cost_usd for r in rs):8.2f} {statistics.mean(r.compactions for r in rs):7.1f}")
+
+
 def cmd_session(a) -> None:
     hits = [p for p in T.PROJECTS.rglob(f"{a.sid}*.jsonl")]
     if not hits:
@@ -148,6 +181,12 @@ def main(argv=None) -> None:
     si = sp.add_parser("simulate")
     si.add_argument("--days", type=float, default=14)
     si.add_argument("--window", type=int, nargs="+", default=[200_000, 300_000])
+    b = sp.add_parser("bench", help="記憶テスト(claude -p を実際に動かす。使用量を消費する)")
+    b.add_argument("--window", type=int, nargs="+", default=[1_000_000, 300_000, 200_000])
+    b.add_argument("--reps", type=int, default=1)
+    b.add_argument("--files", type=int, default=16, help="埋め草ファイル数(1 つ約 2 万トークン)")
+    b.add_argument("--model", default="sonnet")
+    b.add_argument("--seed", type=int, default=1)
     se = sp.add_parser("session")
     se.add_argument("sid")
     cx = sp.add_parser("ctx")
@@ -156,7 +195,7 @@ def main(argv=None) -> None:
     if a.cmd == "ctx":
         print(T.last_context(a.transcript))
         return
-    {"report": cmd_report, "trend": cmd_trend, "simulate": cmd_simulate, "session": cmd_session}[a.cmd](a)
+    {"report": cmd_report, "trend": cmd_trend, "simulate": cmd_simulate, "bench": cmd_bench, "session": cmd_session}[a.cmd](a)
 
 
 if __name__ == "__main__":
