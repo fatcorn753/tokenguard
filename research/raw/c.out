@@ -1,0 +1,142 @@
+```json
+{
+  "theme": "プロンプトキャッシュの仕組みと費用 (テーマc)",
+  "claims": [
+    {
+      "id": "c1",
+      "claim": "Anthropic の Prompt Caching におけるキャッシュ書き込み（cache write）単価は、デフォルトの 5 分 TTL では基本入力トークン単価の 1.25 倍、拡張された 1 時間 TTL（ttl: \"1h\"）では基本入力単価の 2 倍に設定されている。",
+      "url": "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
+      "title": "Prompt caching - Anthropic",
+      "quote": "Cache write tokens with a 5-minute TTL are 1.25 times the base input tokens price.",
+      "confidence": "high",
+      "applicability": "Claude Code で 1 時間 TTL（単価 2 倍）の cache write が費用全体の 26% を占めているため、5 分以内に連続 호출される対話セッションでは 5 分 TTL を選択するか、不要なキャッシュ再書き込み（キャッシュミス）を防ぐ運用で書き込みコストを直接削減できる。"
+    },
+    {
+      "id": "c2",
+      "claim": "Anthropic のキャッシュ読み込み（cache read / hit）単価はほとんどのモデルで基本入力トークン単価の 0.1 倍（90% 割引）であり、1 時間 TTL 書き込み（2 倍）と比較すると 20 分の 1 の単価で処理される。",
+      "url": "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
+      "title": "Prompt caching - Anthropic",
+      "quote": "Cache read tokens are 0.1 times the base input tokens price (see the table footnote for per-model exceptions).",
+      "confidence": "high",
+      "applicability": "キャッシュヒットしても累積コンテキストが肥大化すると cache read が費用の 64% に達するため、キャッシュヒット率を維持しつつ、不要になった古い履歴を計画的に切り詰める二段階のコスト制御が有効になる。"
+    },
+    {
+      "id": "c3",
+      "claim": "Anthropic のプロンプトキャッシュはデフォルトで 5 分間の有効期限（TTL）を持つが、キャッシュされたコンテンツが再利用（ヒット）されるたびに追加費用なしで TTL が自動延長される。",
+      "url": "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
+      "title": "Prompt caching - Anthropic",
+      "quote": "By default, the cache has a 5-minute lifetime. The cache is refreshed for no additional cost each time the cached content is used.",
+      "confidence": "high",
+      "applicability": "Claude Code の利用者が離席して TTL が切れると高価な全文 cache write（入力の 2 倍）が再発生するため、長時間放置する前に `/compact` やセッション区切りを行う運用ルールが有効である。"
+    },
+    {
+      "id": "c4",
+      "claim": "Anthropic API では 1 リクエストあたり最大 4 つのキャッシュブレークポイント（cache_control）を設定でき、変更頻度の異なるセクション（ツール定義、システム指示、対話履歴など）を独立してキャッシュ管理できる。",
+      "url": "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
+      "title": "Prompt caching - Anthropic",
+      "quote": "You can define up to 4 cache breakpoints if you want to: Cache different sections that change at different frequencies",
+      "confidence": "high",
+      "applicability": "Claude Code のプロキシやラッパー運用において、不変のツール定義・CLAUDE.md と、頻繁に追記されるメッセージ履歴の境界にブレークポイントを分けて配置することで、部分的な変更時の再書き込みトークン量を最小化できる。"
+    },
+    {
+      "id": "c5",
+      "claim": "Anthropic のプロンプトキャッシュにはモデルごとに最小キャッシュ可能トークン長（1,024〜4,096 トークン等）が定められており、それに満たない短いプレフィックスは cache_control を付与してもエラーなくキャッシュ対象外となる。",
+      "url": "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
+      "title": "Prompt caching - Anthropic",
+      "quote": "Shorter prompts cannot be cached, even if marked with cache_control. Any requests to cache fewer than this number of tokens are processed without caching, and no error is returned.",
+      "confidence": "high",
+      "applicability": "サブエージェントや軽量スキルを呼び出す際、システムプロンプトとツール定義の合計が最小トークン長を超えるか確認し、短命な単発タスクでは無理に長大な共通プレフィックスを載せない設計が有効である。"
+    },
+    {
+      "id": "c6",
+      "claim": "Anthropic のキャッシュプレフィックスは `tools` → `system` → `messages` の厳密な階層順序で構築され、上位階層を変更するとその階層だけでなく下位階層すべてのキャッシュが連鎖的に無効化される。",
+      "url": "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
+      "title": "Prompt caching - Anthropic",
+      "quote": "Cache prefixes are created in the following order: tools, system, then messages. This order forms a hierarchy where each level builds upon the previous ones.",
+      "confidence": "high",
+      "applicability": "セッション途中で MCP サーバーのツール定義（tools）や CLAUDE.md（system）を書き換えると数十万トークンの messages キャッシュまで全て無効化され 2 倍単価の cache write が発生するため、セッション中のツール・システム変更を禁止する運用が必須となる。"
+    },
+    {
+      "id": "c7",
+      "claim": "ツール定義の変更はキャッシュ全体を無効化し、system プロンプトの変更は system と messages を無効化するほか、画像の追加・削除、tool_choice の変更、thinking パラメータ（有効化や budget_tokens）の変更も messages 等のキャッシュを無効化する。",
+      "url": "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
+      "title": "Prompt caching - Anthropic",
+      "quote": "Modifications to cached content can invalidate some or all of the cache. As described in Structuring your prompt, the cache follows the hierarchy: tools → system → messages. Changes at each level invalidate that level and all subsequent levels.",
+      "confidence": "high",
+      "applicability": "Claude Code 利用時に会話の途中で Extended Thinking の ON/OFF や effort 設定を頻繁に切り替えたり、過去ターンの画像を動的に削除したりするとキャッシュミスを誘発するため、セッション開始時に thinking 設定を固定する運用が推奨される。"
+    },
+    {
+      "id": "c8",
+      "claim": "Claude Code はシステムプロンプトなどの反復コンテンツに対するプロンプトキャッシュと、コンテキスト上限接近時に対話履歴を要約する auto-compaction を組み合わせて自動的にコストを最適化している。",
+      "url": "https://code.claude.com/docs/en/costs",
+      "title": "Manage costs effectively - Claude Code Docs",
+      "quote": "Claude Code automatically optimizes costs through prompt caching, which reduces costs for repeated content like system prompts, and auto-compaction, which summarizes conversation history when approaching context limits",
+      "confidence": "high",
+      "applicability": "コンテキスト上限に達して自動コンパクションが走るまで待つと毎ターンの cache read 費用が膨らむため、タスクの区切りごとに手動で `/compact` または `/clear` を実行してプレフィックス長自体を短縮する運用が効果的である。"
+    },
+    {
+      "id": "c9",
+      "claim": "OpenAI の Prompt Caching は明示的な設定なしで 1,024 トークン以上のプロンプトに対して自動的に有効化され、先頭 1,024 トークン以降は 128 トークン単位の増分で最長一致プレフィックスをキャッシュする。",
+      "url": "https://platform.openai.com/docs/guides/prompt-caching",
+      "title": "Prompt Caching - OpenAI API",
+      "quote": "The API caches the longest prefix of a prompt that has been previously computed, starting at 1,024 tokens and increasing in 128-token increments.",
+      "confidence": "high",
+      "applicability": "Claude Code でも最新 API の自動キャッシュやプレフィックス一致の仕組みを活かすため、共通の定型指示やスキル定義を 1,024 トークン以上の安定した先頭ブロックにまとめる設計が有効である。"
+    },
+    {
+      "id": "c10",
+      "claim": "OpenAI のキャッシュヒットはプロンプト先頭からの完全なプレフィックス一致でのみ成立するため、静的な指示や例をプロンプト先頭に配置し、ユーザー固有の動的コンテンツは末尾に配置する必要がある。",
+      "url": "https://platform.openai.com/docs/guides/prompt-caching",
+      "title": "Prompt Caching - OpenAI API",
+      "quote": "Cache hits are only possible for exact prefix matches within a prompt. To realize caching benefits, place static content like instructions and examples at the beginning of your prompt",
+      "confidence": "high",
+      "applicability": "Claude Code の hook やカスタムスキルで現在時刻・Git ブランチ状態・動的環境変数を注入する際は、CLAUDE.md（先頭）ではなく最新のユーザーメッセージ末尾に付与することでプレフィックスキャッシュ破壊を防げる。"
+    },
+    {
+      "id": "c11",
+      "claim": "vLLM の Automatic Prefix Caching（APC）は、既存クエリの KV キャッシュをブロック単位のハッシュ（プレフィックス＋自ブロックのトークン列）で管理し、同一プレフィックスを持つ新規クエリが prefill 計算をスキップして KV キャッシュを直接再利用できるようにする。",
+      "url": "https://docs.vllm.ai/en/latest/automatic_prefix_caching/apc.html",
+      "title": "Automatic Prefix Caching — vLLM",
+      "quote": "Automatic Prefix Caching (APC in short) caches the KV cache of existing queries, so that a new query can directly reuse the KV cache if it shares the same prefix with one of the existing queries.",
+      "confidence": "high",
+      "applicability": "エージェントのサブタスクを並列実行する際、全ワーカーで先頭ブロックのトークン列を 1 トークンも違わず完全一致させることで、バックエンドの KV キャッシュ再利用効率を最大化できる。"
+    },
+    {
+      "id": "c12",
+      "claim": "SGLang の RadixAttention は、全リクエストの KV キャッシュを基数木（radix tree）内の LRU キャッシュとして保持し、複数の生成呼び出しや分岐するエージェント実行間で実行時に自動的に KV キャッシュを再利用することで最大 5 倍以上のスループット向上を実現する。",
+      "url": "https://arxiv.org/abs/2312.07104",
+      "title": "SGLang: Efficient Execution of Structured Language Model Programs",
+      "quote": "Additionally, we propose RadixAttention, a novel technique that maintains a Least Recently Used (LRU) cache of the Key-Value (KV) cache for all requests in a radix tree, enabling automatic KV cache reuse across multiple generation calls at runtime.",
+      "confidence": "high",
+      "applicability": "Claude Code で複数の実装案を探索・検証する際、共通の調査コンテキストまでを親ブランチとしてキャッシュさせた直後に複数のサブエージェントを同時フォークさせる運用により、共通プレフィックスのキャッシュヒットを最大化できる。"
+    },
+    {
+      "id": "c13",
+      "claim": "Manus の本番 AI エージェントでは入力と出力のトークン比率が平均約 100:1 に達し、Claude Sonnet ではキャッシュ済み入力が 0.30 USD/MTok、非キャッシュ入力が 3 USD/MTok と 10 倍の価格差があるため、KV キャッシュヒット率が最重要指標となる。",
+      "url": "https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus",
+      "title": "Context Engineering for AI Agents: Lessons from Building Manus",
+      "quote": "with Claude Sonnet, for instance, cached input tokens cost 0.30 USD/MTok, while uncached ones cost 3 USD/MTok—a 10x difference.",
+      "confidence": "high",
+      "applicability": "Claude Code でも入力トークンが圧倒的割合（cache read 64% + cache write 26% = 90%）を占めるため、出力トークン削減よりもキャッシュミス（cache write の再発生）をゼロに近づける hook・プロンプト設計を最優先すべきである。"
+    },
+    {
+      "id": "c14",
+      "claim": "LLM の自己回帰的な性質上、プロンプト先頭付近に秒単位のタイムスタンプや非決定的な JSON キー順序による 1 トークンの差異が生じるだけで、その位置以降の KV キャッシュがすべて無効化されるため、コンテキストは追記専用（append-only）かつ決定論的に保つ必要がある。",
+      "url": "https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus",
+      "title": "Context Engineering for AI Agents: Lessons from Building Manus",
+      "quote": "Due to the autoregressive nature of LLMs, even a single-token difference can invalidate the cache from that token onward",
+      "confidence": "high",
+      "applicability": "Claude Code の PreToolUse / PostToolUse hook や MCP ツール出力で JSON を返す際はキーを必ずソート（決定論的シリアライズ）し、システムプロンプトや過去ログを遡って書き換えない追記専用の運用を徹底することでキャッシュ無効化を防げる。"
+    },
+    {
+      "id": "c15",
+      "claim": "エージェントの実行ループ途中でツール定義を動的に追加・削除するとコンテキスト先頭のツールブロックが変わり以降の KV キャッシュが全て無効化されるため、ツール定義自体は固定したままデコード時のロジットマスクやプレフィックス制約で呼び出し可能なツールを制御すべきである。",
+      "url": "https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus",
+      "title": "Context Engineering for AI Agents: Lessons from Building Manus",
+      "quote": "masking token logits during decoding to prevent (or enforce) the selection of certain actions based on the current context.",
+      "confidence": "high",
+      "applicability": "Claude Code でフェーズごとに使えるツールを制限したい場合、MCP サーバーやツール定義をセッション途中で動的に増減させるのではなく、全ツール定義を先頭に固定した上で PreToolUse hook による実行ブロックやプロンプト末尾での指示で制御する設計が有効である。"
+    }
+  ]
+}
+```

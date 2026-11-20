@@ -1,0 +1,133 @@
+```json
+{
+  "theme": "モデルの振り分けとカスケード（テーマe）",
+  "claims": [
+    {
+      "id": "frugalgpt-cascade",
+      "claim": "クエリごとに適切なLLMの組み合わせを学習して順次呼び出すLLMカスケード（FrugalGPT）により、最上位の単一モデル（GPT-4など）と同等の性能を維持しながら最大98%のコスト削減、または同一コストで最大4%の精度向上が達成できる。",
+      "url": "https://arxiv.org/abs/2305.05176",
+      "title": "FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance",
+      "quote": "Our experiments show that FrugalGPT can match the performance of the best individual LLM (e.g. GPT-4) with up to 98% cost reduction or improve the accuracy over GPT-4 by 4% with the same cost.",
+      "confidence": "high",
+      "applicability": "Claude Codeのスキルやhookでタスクをまず安価なHaikuやSonnetのサブエージェントに処理させ、失敗や確信度不足のときのみOpusへエスカレーションするカスケード運用に適用できる。"
+    },
+    {
+      "id": "routellm-preference",
+      "claim": "選好データで学習した軽量ルーターモデル（RouteLLM）が推論時に強モデルと弱モデルを動的に選択することで、応答品質を損なうことなく推論コストを半分以下（2倍以上のコスト効率）に削減できる。",
+      "url": "https://arxiv.org/abs/2406.18665",
+      "title": "RouteLLM: Learning to Route LLMs with Preference Data",
+      "quote": "To address this dilemma, we propose several efficient router models that dynamically select between a stronger and a weaker LLM during inference, aiming to optimize the balance between cost and response quality.",
+      "confidence": "high",
+      "applicability": "UserPromptSubmit hookやLiteLLM等のプロキシでプロンプトの難易度を事前分類し、単純な依頼ではサブエージェントや小モデルへ自動誘導する仕組みとして導入できる。"
+    },
+    {
+      "id": "automix-self-verification",
+      "claim": "小規模モデルの出力に対するfew-shot自己検証で信頼度を推定し大モデルへのルーティングを判断するAutoMixにより、同等の性能を保ちながら計算コストを50%以上削減できる。",
+      "url": "https://arxiv.org/abs/2310.12963",
+      "title": "AutoMix: Automatically Mixing Language Models",
+      "quote": "Experiments across five language models and five challenging datasets show that Automix consistently surpasses strong baselines, reducing computational cost by over 50% for comparable performance.",
+      "confidence": "high",
+      "applicability": "軽量モデル（Haiku/Sonnet）のサブエージェントにコード生成とテスト・自己検証をセットで実行させ、検証を通過しなかった場合のみ親または上位モデルが介入するスキル設計に使える。"
+    },
+    {
+      "id": "hybrid-llm-routing",
+      "claim": "予測されるクエリ難易度と要求品質レベルに基づいて小モデルと大モデルへ振り分けるHybrid LLMにより、応答品質を一切落とさずに大規模モデルへの呼び出し回数を最大40%削減できる。",
+      "url": "https://arxiv.org/abs/2404.14618",
+      "title": "Hybrid LLM: Cost-Efficient and Quality-Aware Query Routing",
+      "quote": "In experiments our approach allows us to make up to 40% fewer calls to the large model, with no drop in response quality.",
+      "confidence": "high",
+      "applicability": "長い文脈でのcache read（64%）とcache write（26%）の単価が高い上位モデルの呼び出し回数を減らすため、定型タスクを小モデルへ事前振り分けする運用ルールとして有効である。"
+    },
+    {
+      "id": "moa-layered-agents",
+      "claim": "複数のオープンソースLLMを階層的に連携させるMixture-of-Agents（MoA）は、AlpacaEval 2.0において単一の高性能モデルGPT-4 Omni（57.5%）を上回る65.1%を達成し、小・中規模モデルの協調で高いコスト効率を実現する。",
+      "url": "https://arxiv.org/abs/2406.04692",
+      "title": "Mixture-of-Agents Enhances Large Language Model Capabilities",
+      "quote": "For example, our MoA using only open-source LLMs is the leader of AlpacaEval 2.0 by a substantial gap, achieving a score of 65.1% compared to 57.5% by GPT-4 Omni.",
+      "confidence": "high",
+      "applicability": "巨大な単一文脈をOpusで維持し続ける代わりに、複数の安価なSonnet/Haikuサブエージェントに短い独立文脈で並列検討させ、要約結果のみを統合するワークフローに応用できる。"
+    },
+    {
+      "id": "anthropic-multiagent-token-multiplier",
+      "claim": "Anthropicの実測データでは、通常のチャット対話と比較して単一エージェントは約4倍、マルチエージェントシステムは約15倍のトークンを消費するため、無秩序なサブエージェント展開は急激なトークン消費を招く。",
+      "url": "https://www.anthropic.com/engineering/multi-agent-research-system",
+      "title": "How we built our multi-agent research system",
+      "quote": "There is a downside: in practice, these architectures burn through tokens fast. In our data, agents typically use about 4× more tokens than chat interactions, and multi-agent systems use about 15× more tokens than chats.",
+      "confidence": "high",
+      "applicability": "CLAUDE.mdやスキル定義に「単純な調査ではサブエージェントを乱立させない」「タスク規模に応じて並列数を制限する」というeffort-scalingルールを明記して15倍のトークン膨張を抑止できる。"
+    },
+    {
+      "id": "anthropic-multiagent-opus-sonnet",
+      "claim": "リードエージェントにClaude Opus 4、サブエージェントにClaude Sonnet 4を組み合わせたマルチエージェント構成は、単一のOpus 4エージェントを社内リサーチ評価で90.2%上回り、探索の並列化と文脈圧縮を両立した。",
+      "url": "https://www.anthropic.com/engineering/multi-agent-research-system",
+      "title": "How we built our multi-agent research system",
+      "quote": "We found that a multi-agent system with Claude Opus 4 as the lead agent and Claude Sonnet 4 subagents outperformed single-agent Claude Opus 4 by 90.2% on our internal research eval.",
+      "confidence": "high",
+      "applicability": "親セッションに高能力モデルを使う場合でも、サブエージェントはSonnetやHaikuに固定して並列探索と要約圧縮を担当させることで、サブエージェント側の単価と親のcache read量を同時に削減できる。"
+    },
+    {
+      "id": "anthropic-routing-haiku-sonnet",
+      "claim": "入力を分類して適切な後続処理へ振り分けるルーティングにより、簡単・一般的な質問は小型でコスト効率の高いClaude 3.5 Haikuへ、困難・非定型な質問はClaude 3.5 Sonnetへとモデルの使い分けが可能になる。",
+      "url": "https://www.anthropic.com/engineering/building-effective-agents",
+      "title": "Building effective agents",
+      "quote": "Routing easy/common questions to smaller, cost-efficient models like Claude 3.5 Haiku and hard/unusual questions to more capable models like Claude 3.5 Sonnet to optimize for best performance.",
+      "confidence": "high",
+      "applicability": "用途別のカスタムサブエージェント（.claude/agents/*.md）を作成し、ログ確認・ファイル検索・定型整形にはmodel: haiku、複雑な実装にはmodel: sonnetを指定して自動振り分けさせる。"
+    },
+    {
+      "id": "claudecode-subagent-context-isolation",
+      "claim": "テスト実行・ドキュメント取得・ログ処理などの冗長な出力を伴う操作をサブエージェントに委任すると、大量の出力はサブエージェントの文脈内に留まりメイン会話には要約のみが返るため、メイン文脈の肥大化を防げる。",
+      "url": "https://code.claude.com/docs/en/costs",
+      "title": "Manage costs effectively",
+      "quote": "Running tests, fetching documentation, or processing log files can consume significant context. By delegating these to a subagent, the verbose output stays in the subagent's context while only the relevant summary returns to your main conversation.",
+      "confidence": "high",
+      "applicability": "費用の90%を占めるcache write（26%）および毎ターン累積するcache read（64%）を最小化するため、大量の標準出力やファイル読込を伴う処理は必ずサブエージェントへ隔離して要約のみを親へ返させる。"
+    },
+    {
+      "id": "claudecode-model-selection-cost",
+      "claim": "大半のコーディング作業はOpusより安価なSonnetで十分処理できるため、通常作業はSonnetを使い複雑な設計判断や多段階推論にのみOpusを限定するとともに、単純なサブエージェントにはHaikuを指定することで費用を抑えられる。",
+      "url": "https://code.claude.com/docs/en/costs",
+      "title": "Manage costs effectively",
+      "quote": "Sonnet handles most coding tasks well and costs less than Opus. Reserve Opus for complex architectural decisions or multi-step reasoning. Use /model to switch models mid-session, or set a default in /config.",
+      "confidence": "high",
+      "applicability": "デフォルトモデルをSonnetに設定し、親をOpusに切り替えた際にサブエージェントまでOpusを継承して高コスト化しないよう、各サブエージェント設定にmodel: haikuまたはsonnetを明示する。"
+    },
+    {
+      "id": "claudecode-explore-haiku-override",
+      "claim": "Claude Codeの組み込み探索サブエージェントであるExploreは同名のカスタム定義で上書きでき、model: haikuを指定することでコードベース検索やファイル調査をより低コストなモデルで実行できる。",
+      "url": "https://code.claude.com/docs/en/sub-agents",
+      "title": "Create custom subagents",
+      "quote": "A user or project subagent named Explore overrides the built-in and keeps its own model field, so define one with model: haiku to run exploration on a lower-cost model.",
+      "confidence": "high",
+      "applicability": "~/.claude/agents/Explore.mdにmodel: haikuを定義するか環境変数CLAUDE_CODE_SUBAGENT_MODEL=haikuを設定し、高頻度で走るコード探索サブエージェントのトークン単価を引き下げる。"
+    },
+    {
+      "id": "anthropic-advisor-executor-tool",
+      "claim": "高速・低コストなExecutorモデルと、生成途中の重要局面で戦略的ガイダンスを提供する高知能なAdvisorモデルを組み合わせることで、実作業の大半を安価なモデルで回しつつ上位モデル並みの判断品質を得られる。",
+      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/advisor-tool",
+      "title": "Advisor tool",
+      "quote": "Pair a faster executor model with a higher-intelligence advisor model that provides strategic guidance mid-generation.",
+      "confidence": "high",
+      "applicability": "反復的なファイル読込・編集・ツール実行ループのcache read/write単価を安価なExecutor（Sonnet/Haiku）に抑え、方針決定やエラー打開時のみAdvisor（Opus）を呼ぶ分担で総コストを削減できる。"
+    },
+    {
+      "id": "claudecode-advisor-command",
+      "claim": "Claude Codeの/advisorコマンド（または--advisorフラグ・advisorModel設定）により、メインの実行モデルとは別にタスク中の重要な瞬間だけ助言を仰ぐセカンダリモデル（Opusなど）を有効化できる。",
+      "url": "https://code.claude.com/docs/en/commands",
+      "title": "Commands reference",
+      "quote": "Enable or disable the advisor tool, which consults a second model for guidance at key moments during a task. Accepts fable, opus, sonnet, or a full model ID.",
+      "confidence": "high",
+      "applicability": "メインモデルを/model sonnetに設定した上で/advisor opus（またはsettings.jsonのadvisorModel）を有効化し、全ターンの長い文脈をOpus単価で支払うことなく要所の設計・軌道修正だけOpusに委ねられる。"
+    },
+    {
+      "id": "aider-architect-editor",
+      "claim": "コーディング問題の解決方針を記述するArchitectモデルと、その方針から既存ファイルへの具体的な編集差分を生成するEditorモデルに役割を分離することで、推論能力と編集効率を最適化できる。",
+      "url": "https://aider.chat/2024/09/26/architect.html",
+      "title": "Separating code reasoning and editing",
+      "quote": "An Architect model is asked to describe how to solve the coding problem. An Editor model is given the Architect's solution and asked to produce specific code editing instructions to apply those changes to existing source files.",
+      "confidence": "high",
+      "applicability": "Claude Codeで設計・修正計画の策定のみ上位モデルで行い、実際のコード編集やビルド確認の反復ループは短い文脈を持つSonnet/Haikuサブエージェントに委任する二段階運用として活用できる。"
+    }
+  ]
+}
+```

@@ -1,0 +1,133 @@
+```json
+{
+  "theme": "テーマ(d): ツール出力の削減",
+  "claims": [
+    {
+      "id": "tool_search_85pct",
+      "claim": "全ツール定義を事前読み込みせず defer_loading でオンデマンド検索する Tool Search Tool により、大規模ツール群へのアクセスを維持したままトークン消費を 85% 削減できる。さらに大規模ツールライブラリ利用時の MCP 評価精度も大幅に向上する。",
+      "url": "https://www.anthropic.com/engineering/advanced-tool-use",
+      "title": "Introducing advanced tool use on the Claude Developer Platform",
+      "quote": "This represents an 85% reduction in token usage while maintaining access to your full tool library. Internal testing showed significant accuracy improvements on MCP evaluations when working with large tool libraries.",
+      "confidence": "high",
+      "applicability": "多数の MCP サーバーを接続する際、ツール定義の遅延読み込み（Tool Search）を有効に保ち、毎ターンの cache write/read に乗る初期コンテキスト肥大化を防ぐ。"
+    },
+    {
+      "id": "mcp_tool_search_default",
+      "claim": "Claude Code の MCP Tool Search はセッション開始時にツール名とサーバー指示のみを読み込み、完全なツール定義は Claude が必要とするまで遅延読み込みすることでコンテキスト消費を低く抑える。",
+      "url": "https://code.claude.com/docs/en/mcp",
+      "title": "Connect Claude Code to tools via MCP - Claude Code Docs",
+      "quote": "Tool search keeps MCP context usage low by deferring tool definitions until Claude needs them. Only tool names and server instructions load at session start, so adding more MCP servers has minimal impact on your context window.",
+      "confidence": "high",
+      "applicability": "実験的ベータ機能を無効化せずデフォルトの Tool Search を維持するとともに、不要な MCP サーバーや高コストな汎用サーバーは gh 等の CLI 呼び出しへ置き換えて初期プレフィックスを最小化する。"
+    },
+    {
+      "id": "ptc_sandbox_filtering",
+      "claim": "コード実行環境内でツールを呼び出し中間結果をフィルタリング・集計してから最終結果のみを返す Programmatic Tool Calling（PTC）により、複雑な調査タスクの平均トークン消費が 43,588 から 27,297 トークンへ 37% 削減される。",
+      "url": "https://www.anthropic.com/engineering/advanced-tool-use",
+      "title": "Introducing advanced tool use on the Claude Developer Platform",
+      "quote": "By keeping intermediate results out of Claude's context, PTC dramatically reduces token consumption. Average usage dropped from 43,588 to 27,297 tokens, a 37% reduction on complex research tasks.",
+      "confidence": "high",
+      "applicability": "大量の生データを直接会話履歴に返させず、Python ワンライナーや jq・awk スクリプトを Bash で実行してフィルタリング・集計済みの最終出力だけをコンテキストに読み込ませるスキルを定義する。"
+    },
+    {
+      "id": "context_editing_84pct",
+      "claim": "古いツール結果を閾値超過時に消去する Context Editing 機能により、100 ターンの Web 検索評価においてコンテキスト枯渇による失敗を防ぎつつトークン消費を 84% 削減できる。",
+      "url": "https://www.anthropic.com/news/context-management",
+      "title": "Managing context on the Claude Developer Platform",
+      "quote": "In a 100-turn web search evaluation, context editing enabled agents to complete workflows that would otherwise fail due to context exhaustion—while reducing token consumption by 84%.",
+      "confidence": "high",
+      "applicability": "長期セッションで過去の大量のツール結果が毎ターンの cache read 費用を押し上げ続けるのを防ぐため、調査フェーズ完了時などの区切りで /compact や /clear を実行して古いツール出力を履歴から切り離す。"
+    },
+    {
+      "id": "clear_at_least_cache_tradeoff",
+      "claim": "サーバー側の古いツール結果消去（clear_tool_uses_20250919）はプロンプトキャッシュのプレフィックスを無効化するため、clear_at_least パラメータで1回あたりに消去する最小トークン数を保証し、キャッシュ破棄に見合う場合のみ発動させる仕組みとなっている。",
+      "url": "https://platform.claude.com/docs/en/build-with-claude/context-editing",
+      "title": "Context editing - Claude API Docs",
+      "quote": "Ensures a minimum number of tokens is cleared each time the strategy activates. If the API can't clear at least the specified amount, the strategy isn't applied. This helps determine whether context clearing is worth breaking your prompt cache.",
+      "confidence": "high",
+      "applicability": "1時間 TTL（単価2倍）の cache write 再発生コストを上回る削減効果を得るため、毎ターン細かく履歴を削るのではなく、コンテキストが一定量膨らんだ時点でまとめて履歴圧縮を行う運用とする。"
+    },
+    {
+      "id": "observation_masking_complexity_trap",
+      "claim": "SWE-bench Verified における比較実験で、古いツール出力（observation）を単純にプレースホルダーへ置換する Observation Masking は、無圧縮エージェント比でコストを半減させつつ、高コストな LLM 要約と同等以上の解決率を達成する。",
+      "url": "https://arxiv.org/abs/2508.21433",
+      "title": "The Complexity Trap: Simple Observation Masking Is as Efficient as LLM Summarization for Agent Context Management",
+      "quote": "We find that a simple environment observation masking strategy halves cost relative to the raw agent while matching, and sometimes slightly exceeding, the solve rate of LLM summarization.",
+      "confidence": "high",
+      "applicability": "追加の LLM 出力トークンを消費する要約だけに頼らず、ツール出力自体を最初から短く切り詰めるか一時ファイルへ退避して参照パスのみを履歴に残す hook を併用し、履歴トークンを半減させる。"
+    },
+    {
+      "id": "swe_agent_search_cap_50",
+      "claim": "SWE-agent の ACI（Agent-Computer Interface）設計では、検索コマンドの返却件数を1クエリあたり最大 50 件に制限し、超過時は結果を出力せずより具体的なクエリへの書き直しを促すことで大量の検索結果による文脈肥大を防いでいる。",
+      "url": "https://arxiv.org/abs/2405.15793",
+      "title": "SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering",
+      "quote": "The search commands return at most 50 results for each search query; if a search exceeds this number, we do not report the results and instead suggest that the agent write a more specific query.",
+      "confidence": "high",
+      "applicability": "Claude Code の PreToolUse hook やカスタム検索ラッパーで grep/find のヒット件数を検査し、50 件を超える場合は一覧を返さずクエリの絞り込みを要求するガードレールを設ける。"
+    },
+    {
+      "id": "swe_agent_viewer_100_lines",
+      "claim": "SWE-agent のファイルビューアは全文出力ではなく1回あたり最大 100 行のウィンドウのみを表示する設計により、不要なファイル内容がコンテキストに流入するのを防いでいる。",
+      "url": "https://arxiv.org/abs/2405.15793",
+      "title": "SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering",
+      "quote": "The file viewer presents a window of at most 100 lines of the file at a time.",
+      "confidence": "high",
+      "applicability": "ファイル確認時は全文 Read を避け、Grep で行番号を特定してから Read ツールの offset と limit（100行単位）や git diff で変更差分周辺のみを読むルールを CLAUDE.md と hook で徹底する。"
+    },
+    {
+      "id": "hooks_log_filtering",
+      "claim": "カスタム hook でツール出力を前処理し、10,000 行のログ全文を Claude に読ませる代わりに ERROR 行のみを grep して返すことで、コンテキスト消費を数万トークンから数百トークンへ削減できる。",
+      "url": "https://code.claude.com/docs/en/costs",
+      "title": "Manage costs effectively - Claude Code Docs",
+      "quote": "Instead of Claude reading a 10,000-line log file to find errors, a hook can grep for ERROR and return only matching lines, reducing context from tens of thousands of tokens to hundreds.",
+      "confidence": "high",
+      "applicability": "settings.json の PreToolUse hook でテスト実行やログ取得コマンドをラッパースクリプトへ書き換え、失敗したテストや ERROR 行だけを標準出力に返すように構成する。"
+    },
+    {
+      "id": "subagent_verbose_isolation",
+      "claim": "テスト実行・ドキュメント取得・ログ処理などの冗長な出力を伴う操作をサブエージェントに委譲することで、大量のツール出力をサブエージェントの独立コンテキストに隔離し、メイン会話には要約のみを返せる。",
+      "url": "https://code.claude.com/docs/en/costs",
+      "title": "Manage costs effectively - Claude Code Docs",
+      "quote": "Running tests, fetching documentation, or processing log files can consume significant context. Delegate these to subagents so the verbose output stays in the subagent's context while only a summary returns to your main conversation.",
+      "confidence": "high",
+      "applicability": "テスト実行やログ解析専用のカスタムサブエージェント（model: haiku 指定）を .claude/agents/ に定義し、メインセッションのキャッシュプレフィックスに巨大な生出力が混入するのを防ぐ。"
+    },
+    {
+      "id": "subagent_token_distillation_ratio",
+      "claim": "サブエージェントが数万トークン以上を消費して広範な探索を行っても、メインエージェントへは 1,000〜2,000 トークン程度に凝縮された要約のみを返すことで、メイン文脈の肥大化を抑えられる。",
+      "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+      "title": "Effective context engineering for AI agents",
+      "quote": "Each subagent might explore extensively, using tens of thousands of tokens or more, but returns only a condensed, distilled summary of its work (often 1,000-2,000 tokens).",
+      "confidence": "high",
+      "applicability": "コードベース探索スキルに context: fork を設定してサブエージェント実行とし、返却フォーマットを該当ファイルパス・行番号・要点の 2,000 トークン以内に制限する。"
+    },
+    {
+      "id": "just_in_time_lightweight_identifiers",
+      "claim": "関連データを事前にすべて前処理して読み込むのではなく、ファイルパスや保存済みクエリなどの軽量な識別子（参照）のみを保持し、実行時に必要なデータだけをツールで動的に遅延読み込み（Just-in-Time）することでコンテキストを節約できる。",
+      "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+      "title": "Effective context engineering for AI agents",
+      "quote": "Rather than pre-processing all relevant data up front, agents built with the “just in time” approach maintain lightweight identifiers (file paths, stored queries, web links, etc.) and use these references to dynamically load data into context at runtime using tools.",
+      "confidence": "high",
+      "applicability": "CLAUDE.md には長大な仕様書を展開せずファイルパスと1行索引のみを記載し、詳細なドキュメントや巨大なコマンド出力は必要になった時点で該当箇所だけを遅延参照させる。"
+    },
+    {
+      "id": "code_intelligence_lsp_navigation",
+      "claim": "型付き言語向けのコードインテリジェンス（LSP）プラグインを導入すると、grep 検索後に複数の候補ファイルを読む代わりに1回の「定義へ移動（go to definition）」呼び出しで済むため、探索時の不要なファイル読み込みを削減できる。",
+      "url": "https://code.claude.com/docs/en/costs",
+      "title": "Manage costs effectively - Claude Code Docs",
+      "quote": "Code intelligence plugins give Claude precise symbol navigation instead of text-based search, reducing unnecessary file reads when exploring unfamiliar code. A single “go to definition” call replaces what might otherwise be a grep followed by reading multiple candidate files.",
+      "confidence": "high",
+      "applicability": "プロジェクトで使用する言語の code intelligence プラグインを有効化し、テキスト検索と複数候補ファイルの全文 Read による大量のツール出力や手動コンパイル出力を削減する。"
+    },
+    {
+      "id": "aider_repomap_token_budget",
+      "claim": "Aider のリポジトリマップは、コードベースの依存グラフから現在の対話状態に最も関連する箇所のみを特定・索引化し、--map-tokens（デフォルト 1k トークン）の予算内に収めて送信することで全文読み込みを代替する。",
+      "url": "https://aider.chat/docs/repomap.html",
+      "title": "Repository map | aider",
+      "quote": "The optimization identifies and maps the portions of the code base which are most relevant to the current state of the chat. The token budget is influenced by the --map-tokens switch, which defaults to 1k tokens.",
+      "confidence": "high",
+      "applicability": "ファイルの実装全文を Read する前に tree-sitter や ctags でクラス・関数シグネチャの索引だけを約 1,000 トークン以内で出力するスクリプトを用意し、必要なシンボルのみを行指定で読む運用にする。"
+    }
+  ]
+}
+```

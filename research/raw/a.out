@@ -1,0 +1,133 @@
+```json
+{
+  "theme": "テーマ(a): プロンプト・文脈の圧縮: LLMLingua / LLMLingua-2 / LongLLMLingua、Selective Context、RECOMP、要約による圧縮、gist tokens、AutoCompressor、エージェントの会話履歴の圧縮(observation masking など)",
+  "claims": [
+    {
+      "id": "llmlingua",
+      "claim": "LLMLingua は小規模な言語モデルでプロンプト内のトークン重要度を計算し、予算制御と反復的トークン圧縮によって性能劣化を最小限に抑えつつ最大 20 倍のプロンプト圧縮を達成する。",
+      "url": "https://github.com/microsoft/LLMLingua",
+      "title": "microsoft/LLMLingua: To speed up LLMs' inference and enhance LLM's perceive of key information, compress the prompt and KV-Cache, which achieves up to 20x compression with minimal performance loss.",
+      "quote": "This approach enables efficient inference with large language models (LLMs), achieving up to 20x compression with minimal performance loss.",
+      "confidence": "high",
+      "applicability": "Claude Code の PreToolUse や UserPromptSubmit フック、あるいは外部ラッパースクリプトで長大なドキュメントやログを事前圧縮してからコンテキストに投入する運用に利用できる。"
+    },
+    {
+      "id": "longllmlingua",
+      "claim": "質問認識型のプロンプト圧縮を行う LongLLMLingua は、長文脈における位置バイアスを緩和しつつ約 4 分の 1 のトークン数で精度を最大 21.4% 向上させ、LooGLE ベンチマークでは 94.0% のコスト削減を達成する。",
+      "url": "https://arxiv.org/abs/2310.06839",
+      "title": "LongLLMLingua: Accelerating and Enhancing LLMs in Long Context Scenarios via Prompt Compression",
+      "quote": "For instance, in the NaturalQuestions benchmark, LongLLMLingua boosts performance by up to 21.4% with around 4x fewer tokens in GPT-3.5-Turbo, leading to substantial cost savings. It achieves a 94.0% cost reduction in the LooGLE benchmark.",
+      "confidence": "high",
+      "applicability": "Claude Code で長大なコードベースや複数ファイルを参照する際、現在の質問・タスクに関連する箇所だけを抽出・圧縮して渡すスキルや MCP サーバーの設計に応用できる。"
+    },
+    {
+      "id": "llmlingua2",
+      "claim": "LLMLingua-2 は双方向 Transformer エンコーダによるトークン分類としてプロンプト圧縮を定式化し、2〜5 倍の圧縮率でエンドツーエンドのレイテンシを 1.6〜2.9 倍高速化しつつ、従来の圧縮手法より 3〜6 倍高速に動作する。",
+      "url": "https://arxiv.org/abs/2403.12968",
+      "title": "LLMLingua-2: Data Distillation for Efficient and Faithful Task-Agnostic Prompt Compression",
+      "quote": "Additionally, our model is 3x-6x faster than existing prompt compression methods, while accelerating the end-to-end latency by 1.6x-2.9x with compression ratios of 2x-5x.",
+      "confidence": "high",
+      "applicability": "軽量な双方向エンコーダをローカルのコマンド出力フィルタや PostToolUse フックに組み込み、追加の API 呼び出しコストなしでツール出力を 2〜5 分の 1 に高速圧縮する仕組みに使える。"
+    },
+    {
+      "id": "selective_context",
+      "claim": "Selective Context は小型言語モデルが計算する自己情報量（self-information）に基づいて冗長な語彙単位を枝刈りし、下流タスクの性能低下をわずかに抑えながら文脈コストを 50%、推論時間を 32% 削減する。",
+      "url": "https://arxiv.org/abs/2310.06201",
+      "title": "Compressing Context to Enhance Inference Efficiency of Large Language Models",
+      "quote": "Specifically, we achieve a 50% reduction in context cost, resulting in a 36% reduction in inference memory usage and a 32% reduction in inference time, while observing only a minor drop of .023 in BERTscore",
+      "confidence": "high",
+      "applicability": "Claude Code に読み込ませる長大な技術文書やログから情報量の低い定型句・反復表現をローカル前処理スクリプトで枝刈りし、cache write/read 対象トークン数を半減させる運用に使える。"
+    },
+    {
+      "id": "recomp",
+      "claim": "RAG 向けの圧縮手法 RECOMP は、取得文書を抽出型・生成型コンプレッサで要約し無関係な場合は空文字を返す選択的拡張と組み合わせることで、性能劣化を最小限に抑えつつ原文比 6% までの高圧縮率を達成する。",
+      "url": "https://arxiv.org/abs/2310.04408",
+      "title": "RECOMP: Improving Retrieval-Augmented LMs with Compression and Selective Augmentation",
+      "quote": "We achieve a compression rate of as low as 6% with minimal loss in performance for both tasks, significantly outperforming the off-the-shelf summarization models.",
+      "confidence": "high",
+      "applicability": "Claude Code の検索系スキルやサブエージェントにおいて、検索結果全文をメイン会話に返すのではなくタスクに無関係なら空を返し関係箇所のみ約 6% に要約して返す設計に活用できる。"
+    },
+    {
+      "id": "gist_tokens",
+      "claim": "Gist Tokens は Attention マスクの制御により長文プロンプトを少数のキャッシュ・再利用可能なトークン集合へ圧縮するよう学習させ、出力品質をほぼ損なわずにプロンプトを最大 26 倍圧縮し FLOPs を最大 40% 削減する。",
+      "url": "https://arxiv.org/abs/2304.08467",
+      "title": "Learning to Compress Prompts with Gist Tokens",
+      "quote": "On decoder (LLaMA-7B) and encoder-decoder (FLAN-T5-XXL) LMs, gisting enables up to 26x compression of prompts, resulting in up to 40% FLOPs reductions, 4.2% wall time speedups, and storage savings, all with minimal loss in output quality.",
+      "confidence": "high",
+      "applicability": "API 利用者側でモデルの Attention は直接変更できないが、反復利用する長大な規約や指示を極小の要約ブロックへ事前集約してキャッシュ再利用する CLAUDE.md・スキル設計の指針になる。"
+    },
+    {
+      "id": "autocompressor",
+      "claim": "AutoCompressor は最大 30,720 トークンの長文脈をセグメント単位で処理してコンパクトな要約ベクトル（soft prompts）へ再帰的に圧縮し、長文脈の情報を保持したまま推論コスト削減と精度向上を両立する。",
+      "url": "https://arxiv.org/abs/2305.14788",
+      "title": "Adapting Language Models to Compress Contexts",
+      "quote": "We fine-tune OPT and Llama-2 models on sequences of up to 30,720 tokens and show that AutoCompressors can utilize long contexts to improve perplexity.",
+      "confidence": "high",
+      "applicability": "Claude Code の長期セッションにおいて、長大な作業履歴や例示を一度に保持せずフェーズごとの短いチェックポイント要約へ段階的に畳み込む /compact 運用の理論的根拠として活用できる。"
+    },
+    {
+      "id": "obs_masking_cost",
+      "claim": "コーディングエージェントにおいて過去の思考・行動履歴を保持したまま古いツール出力（observation）のみをプレースホルダに置換する Observation Masking は、無圧縮時に比べてコストを半減させつつ LLM 要約と同等以上の解決率を達成する。",
+      "url": "https://arxiv.org/abs/2508.21433",
+      "title": "The Complexity Trap: Simple Observation Masking Is as Efficient as LLM Summarization for Agent Context Management",
+      "quote": "We find that a simple environment Observation Masking strategy halves cost relative to the Raw Agent while matching, and sometimes slightly exceeding, the solve rate of LLM-Summary.",
+      "confidence": "high",
+      "applicability": "Claude Code のフックや MCP ツール設計で、数ターン前の巨大なファイル読取結果やテストログだけを短いプレースホルダやファイルパス参照に置き換え、思考過程は残す履歴管理に直接応用できる。"
+    },
+    {
+      "id": "obs_masking_hybrid",
+      "claim": "古いツール出力を隠す Observation Masking を第一段階とし、文脈がさらに伸びた段階で LLM 要約を組み合わせるハイブリッド手法は、Observation Masking 単体よりさらに 7%、LLM 要約単体より 11% コストを削減する。",
+      "url": "https://arxiv.org/abs/2508.21433",
+      "title": "The Complexity Trap: Simple Observation Masking Is as Efficient as LLM Summarization for Agent Context Management",
+      "quote": "Additionally, we introduce a novel hybrid approach that further reduces costs by 7% and 11% compared to just Observation Masking or LLM-Summary, respectively.",
+      "confidence": "high",
+      "applicability": "Claude Code で普段はツール出力の抑制（フックやサブエージェント）で文脈膨張を防ぎ、セッションが長引いた節目でのみ /compact（LLM 要約）を実行する二段構えの運用指針として使える。"
+    },
+    {
+      "id": "jetbrains_obs_masking",
+      "claim": "JetBrains Research の実証では、Observation Masking は要約生成用の追加 API 呼び出しを必要とせず、古いノイズの多いツール出力のみをプレースホルダで隠して直近の関連作業だけを残すため、高速かつ安価に文脈肥大化を防げる。",
+      "url": "https://blog.jetbrains.com/research/2025/12/efficient-context-management/",
+      "title": "Cutting Through the Noise: Smarter Context Management for LLM-Powered Agents",
+      "quote": "We designed it this way because observation masking is fast and inexpensive: it hides old, noisy tool outputs with placeholders, keeping only the most relevant part of the agent's work as it moves forward.",
+      "confidence": "high",
+      "applicability": "Claude Code で頻繁に /compact を呼んでキャッシュを再構築・要約トークンを消費するよりも、最初からツール出力自体を小さく保つフック設計を優先すべき根拠になる。"
+    },
+    {
+      "id": "anthropic_context_editing",
+      "claim": "Claude API のツール結果クリア機能は古いツール出力を削除して文脈を圧縮するが、削除のたびにキャッシュ済みプレフィックスが無効化され cache write コストが発生するため、clear_at_least で一度に十分なトークン数をまとめて削除する必要がある。",
+      "url": "https://platform.claude.com/docs/en/build-with-claude/context-editing",
+      "title": "Context editing - Claude Platform Docs",
+      "quote": "Invalidates cached prompt prefixes when content is cleared. To account for this, clear enough tokens to make the cache invalidation worthwhile. Use the clear_at_least parameter to ensure a minimum number of tokens is cleared each time.",
+      "confidence": "high",
+      "applicability": "1 時間 TTL の cache write 単価が入力の 2 倍である前提下では、毎ターン少しずつ履歴を削るとキャッシュ破棄で逆効果になるため、文脈圧縮は一定の閾値に達した時点でまとめてバッチ実行する運用にすべきである。"
+    },
+    {
+      "id": "anthropic_compaction_cache",
+      "claim": "Claude の Compaction ではシステムプロンプトを会話履歴と分離してキャッシュしておくことで、会話履歴の要約圧縮が発生した際もシステムプロンプトのキャッシュは有効に保たれ、要約部分のみを新規キャッシュエントリとして書き込むだけで済む。",
+      "url": "https://platform.claude.com/docs/en/build-with-claude/compaction",
+      "title": "Compaction - Claude Platform Docs",
+      "quote": "This keeps the system prompt cached separately from the conversation, so when compaction occurs: The system prompt cache remains valid and is read from cache; Only the compaction summary needs to be written as a new cache entry.",
+      "confidence": "high",
+      "applicability": "Claude Code でも CLAUDE.md や固定システム指示をセッション途中で変更せず安定プレフィックスとして維持することで、/compact 実行後の高額な 1 時間 TTL cache write を最小限の要約ブロックだけに抑えられる。"
+    },
+    {
+      "id": "claude_code_hooks_preprocess",
+      "claim": "Claude Code のカスタムフックでツール出力を事前処理し、例えば 10,000 行のログファイルをそのまま読ませる代わりに ERROR 行のみを grep して返すことで、コンテキスト消費を数万トークンから数百トークンへ約 2 桁削減できる。",
+      "url": "https://code.claude.com/docs/en/costs",
+      "title": "Manage costs effectively - Claude Code Docs",
+      "quote": "Instead of Claude reading a 10,000-line log file to find errors, a hook can grep for ERROR and return only matching lines, reducing context from tens of thousands of tokens to hundreds.",
+      "confidence": "high",
+      "applicability": "テスト実行やビルド出力をフィルタリングする PreToolUse / PostToolUse フックや専用スキルを設定し、生ログがメイン文脈に入って cache write（26%）と以降の cache read（64%）を押し上げるのを未然に防げる。"
+    },
+    {
+      "id": "claude_code_subagents_isolation",
+      "claim": "一度しか参照しない大量の検索結果・ログ・ファイル内容を生む副次タスクをサブエージェントに委譲し、独立したコンテキストで処理させて要約のみをメイン会話に返させることで、メイン文脈の肥大化と毎ターンのキャッシュ読取累積を防げる。",
+      "url": "https://code.claude.com/docs/en/costs",
+      "title": "Manage costs effectively - Claude Code Docs",
+      "quote": "Use one when a side task would flood your main conversation with search results, logs, or file contents you won't reference again: the subagent does that work in its own context and returns only the summary.",
+      "confidence": "high",
+      "applicability": ".claude/agents/ に軽量モデル（Haiku 等）を指定した調査・テスト実行用サブエージェントを定義し、メイン会話には要約だけを返させることで 1 時間 TTL の cache write と以降の cache read を大幅に削減できる。"
+    }
+  ]
+}
+```

@@ -1,0 +1,142 @@
+```json
+{
+  "theme": "エージェントの記憶管理: MemGPT / Letta、階層化した記憶、文脈の外に置く記憶、Generative Agents の reflection、A-MEM、Mem0、Claude Code の CLAUDE.md / memory / compact / context editing / memory tool",
+  "claims": [
+    {
+      "id": "memgpt",
+      "claim": "OSの仮想メモリに着想を得た「仮想コンテキスト管理」により、高速な主記憶（コンテキストウィンドウ）と低速な外部記憶の間でデータを移動させることで、固定長のコンテキスト上限を超えた記憶領域を扱える。",
+      "url": "https://arxiv.org/abs/2310.08560",
+      "title": "MemGPT: Towards LLMs as Operating Systems",
+      "quote": "we propose virtual context management, a technique drawing inspiration from hierarchical memory systems in traditional operating systems that provide the appearance of large memory resources through data movement between fast and slow memory.",
+      "confidence": "high",
+      "applicability": "常駐させる作業記憶（CLAUDE.md・MEMORY.md）を最小限に絞り、過去の調査ログや設計履歴を外部ファイルやSQLiteへ退避して必要時のみツールでページインする階層化メモリ運用に応用できる。"
+    },
+    {
+      "id": "letta",
+      "claim": "LettaのMemory Blocks（コアメモリ）はコンテキストウィンドウ内に常駐する構造化セクションであり、検索ツールを介さずに全ターンで常に参照される一方、総量を5万文字未満・20ブロック未満に抑える階層設計が推奨されている。",
+      "url": "https://docs.letta.com/v1-sdk/memory/memory-blocks",
+      "title": "Memory blocks (core memory) | Letta Docs",
+      "quote": "Memory blocks are structured sections of the agent's context window that persist across all interactions. They are always visible - no retrieval needed.",
+      "confidence": "high",
+      "applicability": "毎ターンのcache read（費用の64%）に乗る常駐コンテキストを固定サイズの構造化ブロック（現在のゴール・制約のみ）に制限し、それ以外をオンデマンド参照のスキルや外部ファイルへ分離する設計指針になる。"
+    },
+    {
+      "id": "mem0",
+      "claim": "会話履歴から重要情報を動的に抽出・統合・検索するMem0アーキテクチャは、全会話履歴をコンテキストに入れるフルコンテキスト方式と比較して、LLM-as-a-Judge指標を改善しつつp95レイテンシを91%削減し、トークン費用を90%以上削減する。",
+      "url": "https://arxiv.org/abs/2504.19413",
+      "title": "Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory",
+      "quote": "In particular, Mem0 attains a 91% lower p95 latency and saves more than 90% token cost, offering a compelling balance between advanced reasoning capabilities and practical deployment constraints.",
+      "confidence": "high",
+      "applicability": "長いセッションの生ログを保持し続ける代わりに、StopやPreCompactのhookで会話から決定事項やファクトだけを抽出して外部メモリに統合し、早めに/clearや/compactで文脈長をリセットする運用に使える。"
+    },
+    {
+      "id": "amem",
+      "claim": "Zettelkasten手法に基づくA-MEMは、新しい記憶の追加時に文脈説明・キーワード・タグを含む構造化ノートを生成し、既存の記憶とのリンク構築や既存記憶の属性更新（Memory Evolution）を動的に行うことで6つの基盤モデルで従来手法を上回る。",
+      "url": "https://arxiv.org/abs/2502.12110",
+      "title": "A-MEM: Agentic Memory for LLM Agents",
+      "quote": "Following the basic principles of the Zettelkasten method, we designed our memory system to create interconnected knowledge networks through dynamic indexing and linking.",
+      "confidence": "high",
+      "applicability": "Claude Codeのauto memoryやプロジェクト知識を単一ファイルに追記し続けるのではなく、タグと相互リンクを持つ小さなトピック別Markdownノート群としてスキルで管理・更新させることで、必要なノートだけを低トークンで読み込める。"
+    },
+    {
+      "id": "genagents",
+      "claim": "Generative Agentsは、自然言語による経験の全記録（メモリ・ストリーム）をそのまま使うだけでなく、時間経過とともに高次の抽象的な洞察（reflection）へ定期的に合成し、動的に検索して行動計画に利用する。",
+      "url": "https://arxiv.org/abs/2304.03442",
+      "title": "Generative Agents: Interactive Simulacra of Human Behavior",
+      "quote": "we describe an architecture that extends a large language model to store a complete record of the agent's experiences using natural language, synthesize those memories over time into higher-level reflections, and retrieve them dynamically to plan behavior.",
+      "confidence": "high",
+      "applicability": "セッション終了時やタスク区切りで実行するreflectionスキルを定義し、冗長な試行錯誤の履歴を数行の教訓・設計原則へ抽象化してMEMORY.mdやrulesへ昇格させることで、次セッション以降の文脈長を大幅に圧縮できる。"
+    },
+    {
+      "id": "readagent",
+      "claim": "長文をエピソード単位に区切って短い要約（gist memory）に圧縮し、詳細が必要な箇所だけ原文をインタラクティブに引き直すReadAgentは、3つの長文読解ベンチマークでベースラインを上回りつつ実効コンテキスト長を3.5〜20倍に拡張する。",
+      "url": "https://arxiv.org/abs/2402.09727",
+      "title": "A Human-Inspired Reading Agent with Gist Memory of Very Long Contexts",
+      "quote": "These evaluations are performed on three long-document reading comprehension tasks: QuALITY, NarrativeQA, and QMSum. ReadAgent outperforms the baselines on all three tasks while extending the effective context window by 3.5-20x.",
+      "confidence": "high",
+      "applicability": "大規模コードベースや長い仕様書を丸ごと読み込ませず、各ファイル・モジュールの数行のgist（要約と行番号インデックス）を先に参照させ、該当行だけをReadツールで部分取得するスキル運用に直結する。"
+    },
+    {
+      "id": "ctxmgmt84",
+      "claim": "Claude Developer Platformのcontext editing（古いツール実行結果の自動消去など）は、100ターンのWeb検索評価において文脈枯渇による失敗を防ぎつつ、トークン消費量を84%削減した。",
+      "url": "https://www.anthropic.com/news/context-management",
+      "title": "Managing context on the Claude Developer Platform",
+      "quote": "In a 100-turn web search evaluation, context editing enabled agents to complete workflows that would otherwise fail due to context exhaustion—while reducing token consumption by 84%.",
+      "confidence": "high",
+      "applicability": "長大になりがちなツール出力（検索結果・テスト出力・ログ）をメイン文脈に残さないよう、サブエージェントへの委譲やPostToolUse/PreToolUseのhookによる出力フィルタリングを行うことで同等のトークン削減効果を得られる。"
+    },
+    {
+      "id": "ctxmgmt39",
+      "claim": "Anthropicの評価において、context editing単体でベースライン比29%の性能向上が得られ、さらにmemory tool（ファイルベースの外部記憶）と組み合わせることで39%の性能向上が達成された。",
+      "url": "https://www.anthropic.com/news/context-management",
+      "title": "Managing context on the Claude Developer Platform",
+      "quote": "The results demonstrate significant gains: combining the memory tool with context editing improved performance by 39% over baseline. Context editing alone delivered a 29% improvement.",
+      "confidence": "high",
+      "applicability": "Claude Codeで/compactや/clearによって古い文脈を消去する前に、重要な中間調査結果を作業用Markdownファイルへ書き出させるワークフローをCLAUDE.mdやスキルでルール化することで、精度向上とコスト削減を両立できる。"
+    },
+    {
+      "id": "ctxedit",
+      "claim": "Context editingとmemory toolを併用すると、コンテキストが消去閾値に近づいた際に自動警告が送られ、古いツール結果が履歴から消去される前に重要情報をメモリファイルへ退避できる。",
+      "url": "https://platform.claude.com/docs/en/build-with-claude/context-editing",
+      "title": "Context editing - Claude Platform Docs",
+      "quote": "When your conversation context approaches the configured clearing threshold, Claude receives an automatic warning to preserve important information. This allows Claude to save tool results or context to its memory files before they're cleared from the conversation history.",
+      "confidence": "high",
+      "applicability": "Claude CodeのPreCompact hookやトークン使用量監視（status line / usage）を活用し、コンパクションが走る直前に必要な状態や未完了タスクを外部ファイルに退避させる自動運用を構築できる。"
+    },
+    {
+      "id": "ctxeditcache",
+      "claim": "会話途中のツール結果を消去するとプロンプトキャッシュのプレフィックスが無効化されるため、clear_at_leastパラメータで1回あたりに消去する最小トークン数を指定し、キャッシュ破棄のコストに見合う場合のみ消去を発動させる設計が重要である。",
+      "url": "https://platform.claude.com/docs/en/build-with-claude/context-editing",
+      "title": "Context editing - Claude Platform Docs",
+      "quote": "Ensures a minimum number of tokens is cleared each time the strategy activates. If the API can't clear at least the specified amount, the strategy isn't applied. This helps determine whether context clearing is worth breaking your prompt cache.",
+      "confidence": "high",
+      "applicability": "1時間TTLのcache write単価が入力の2倍・cache readが費用の64%を占める前提では、細切れに/compactを行うとキャッシュ再構築（cache write）が頻発するため、十分なトークンが溜まった段階やタスク切替時にまとめて/compact・/clearする運用基準として使える。"
+    },
+    {
+      "id": "memtool",
+      "claim": "Memory toolは、あらゆる関連情報を事前にコンテキストへ読み込むのではなく、学習した内容をメモリファイル群へ記録し、必要な時にオンデマンドで読み戻すJust-in-Timeな文脈取得を実現する。",
+      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool",
+      "title": "Memory tool - Claude Platform Docs",
+      "quote": "Memory supports just-in-time context retrieval. Rather than loading all relevant information up front, an agent records what it learns in memory files and reads them back on demand.",
+      "confidence": "high",
+      "applicability": "プロジェクト固有の仕様や過去のトラブルシューティングをすべてCLAUDE.mdに書かず、ディレクトリやファイル単位の外部ドキュメントおよびスキルに切り出して必要時のみReadさせる運用に直接適用できる。"
+    },
+    {
+      "id": "ctxeng",
+      "claim": "Anthropicが提唱する構造化ノートテイキング（agentic memory）は、エージェントがコンテキストウィンドウ外の永続メモリに定期的にノートを書き出し、後から必要に応じてコンテキストに引き戻すことで、最小限のオーバーヘッドで長期タスクの一貫性を維持する。",
+      "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+      "title": "Effective context engineering for AI agents",
+      "quote": "Structured note-taking, or agentic memory, is a technique where the agent regularly writes notes persisted to memory outside of the context window. These notes get pulled back into the context window at later times.",
+      "confidence": "high",
+      "applicability": "進捗チェックリストや調査メモを会話履歴内だけで追うのではなく、NOTES.mdやTODOファイルへ随時書き出させてから/clearで文脈をリセットし、新セッションでそのノートだけを読み込む運用により累積cache readを大幅に抑えられる。"
+    },
+    {
+      "id": "claudemdsize",
+      "claim": "Claude Code公式ドキュメントでは、CLAUDE.mdファイルは1ファイルあたり200行未満を目標とすることが推奨されており、長すぎるファイルは毎ターンのコンテキストを消費するだけでなく指示への追従性も低下させる。",
+      "url": "https://code.claude.com/docs/en/memory",
+      "title": "How Claude remembers your project",
+      "quote": "Size: target under 200 lines per CLAUDE.md file. Longer files consume more context and reduce adherence.",
+      "confidence": "high",
+      "applicability": "ルートCLAUDE.mdを200行未満（理想的には数十行の必須コマンドと規約のみ）に削ぎ落とし、特定タスク用の手順はオンデマンド読み込みされるスキル（.claude/skills/）やpath指定ルール（.claude/rules/）へ移すことで全リクエストの基礎トークンを削減できる。"
+    },
+    {
+      "id": "automemlimit",
+      "claim": "Claude Codeのauto memoryにおいて、毎セッション開始時に自動ロードされるのはMEMORY.mdの先頭200行または25KBのいずれか早い方までであり、それを超える内容はセッション開始時には読み込まれない。",
+      "url": "https://code.claude.com/docs/en/memory",
+      "title": "How Claude remembers your project",
+      "quote": "The first 200 lines of MEMORY.md, or the first 25KB, whichever comes first, are loaded at the start of every conversation. Content beyond that threshold is not loaded at session start.",
+      "confidence": "high",
+      "applicability": "MEMORY.mdが200行上限まで膨らむと毎セッションの初期cache write/readコストが増大するため、MEMORY.mdは簡潔な目次（インデックス）として保ち、詳細は別トピックファイルへ分割して定期整理する運用が有効である。"
+    },
+    {
+      "id": "costshooks",
+      "claim": "Claude Codeのカスタムhookでデータを前処理し、例えば1万行のログファイルをClaudeに直接読ませる代わりにhookでERROR行だけをgrepして返すことで、コンテキスト消費を数万トークンから数百トークンへ削減できる。",
+      "url": "https://code.claude.com/docs/en/costs",
+      "title": "Manage costs effectively",
+      "quote": "Instead of Claude reading a 10,000-line log file to find errors, a hook can grep for ERROR and return only matching lines, reducing context from tens of thousands of tokens to hundreds.",
+      "confidence": "high",
+      "applicability": "テスト実行・ビルドログ・大容量ファイル検索などをhookやラッパースクリプトで要約・フィルタリングしてからコンテキストに渡すことで、1時間TTLの巨大なcache writeおよび後続全ターンのcache read膨張を根本から防げる。"
+    }
+  ]
+}
+```
