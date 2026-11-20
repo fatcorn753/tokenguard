@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """tokenguard を ~/.claude に組み込む。何度実行しても同じ状態になる。--uninstall で外す。
 
-- settings.json: autoCompactWindow と 2 つの hook を足す(既存の hook は残す)。変更前に .bak を作る
+- settings.json: autoCompactWindow と 3 つの hook を足す(既存の hook は残す)。変更前に .bak を作る
 - ~/.claude/skills/handoff: このリポジトリの skills/handoff へのシンボリックリンク
 - ~/.local/bin/tokenguard: 計測 CLI
 """
@@ -19,10 +19,11 @@ SKILL = CLAUDE / "skills" / "handoff"
 BIN = Path.home() / ".local" / "bin" / "tokenguard"
 META = Path.home() / ".cache" / "tokenguard" / "install.json"  # settings.json に未知のキーを足さないため外に置く
 # 自分の hook を見分ける目印。clone 先のフォルダ名に依らないよう、スクリプト名で見る
-OURS = ("/hooks/ctx_guard.py", "/hooks/img_shrink.py")
+OURS = ("/hooks/ctx_guard.py", "/hooks/img_shrink.py", "/hooks/ttl_guard.py")
 
 HOOKS = {
-    "UserPromptSubmit": {"hooks": [{"type": "command", "command": f"python3 {ROOT}/hooks/ctx_guard.py", "timeout": 10}]},
+    "UserPromptSubmit": {"hooks": [{"type": "command", "command": f"python3 {ROOT}/hooks/ctx_guard.py", "timeout": 10},
+                                   {"type": "command", "command": f"python3 {ROOT}/hooks/ttl_guard.py", "timeout": 10}]},
     "PreToolUse": {"matcher": "Read", "hooks": [{"type": "command", "command": f"python3 {ROOT}/hooks/img_shrink.py", "timeout": 30}]},
 }
 
@@ -79,7 +80,7 @@ def main() -> None:
         BIN.parent.mkdir(parents=True, exist_ok=True)
         if not BIN.exists():
             BIN.symlink_to(ROOT / "bin" / "tokenguard")
-        print(f"組み込みました: autoCompactWindow={a.window}, hook 2 件, /handoff, {BIN}")
+        print(f"組み込みました: autoCompactWindow={a.window}, hook 3 件, /handoff, {BIN}")
 
     tmp = SETTINGS.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(settings, ensure_ascii=False, indent=2) + "\n")

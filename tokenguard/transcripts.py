@@ -28,6 +28,8 @@ class Call:
     cache_write: int
     cache_read: int
     output: int
+    # cache write のうち 5 分 TTL の分。サブエージェントなど 5 分 TTL の呼び出しを見分けるのに使う
+    write_5m: int = 0
 
     @property
     def context(self) -> int:
@@ -104,7 +106,8 @@ def parse(path: Path) -> Session:
                                      u.get("input_tokens") or 0,
                                      u.get("cache_creation_input_tokens") or 0,
                                      u.get("cache_read_input_tokens") or 0,
-                                     u.get("output_tokens") or 0)
+                                     u.get("output_tokens") or 0,
+                                     (u.get("cache_creation") or {}).get("ephemeral_5m_input_tokens") or 0)
                 for b in m.get("content") or []:
                     if isinstance(b, dict) and b.get("type") == "tool_use":
                         pending[b.get("id")] = _tool_key(b)
@@ -147,8 +150,15 @@ def load(days: float) -> list[Session]:
     return out
 
 
-def last_context(transcript: str | Path, tail_bytes: int = 400_000) -> int:
-    """会話ログの末尾から、直近の API 呼び出しが読んだ文脈の大きさを返す。hook から使う。"""
+@dataclass
+class LastUsage:
+    context: int = 0
+    ts: str = ""  # 直近の API 応答の時刻(ISO 8601)
+    ttl: int = 3600  # その応答が使った cache の TTL(秒)。5 分 TTL の書き込みだけなら 300
+
+
+def last_usage(transcript: str | Path, tail_bytes: int = 400_000) -> LastUsage:
+    """会話ログの末尾から、直近の API 呼び出しの文脈の大きさ・時刻・cache TTL を返す。hook から使う。"""
     try:
         with open(transcript, "rb") as f:
             f.seek(0, os.SEEK_END)
@@ -156,7 +166,7 @@ def last_context(transcript: str | Path, tail_bytes: int = 400_000) -> int:
             f.seek(max(0, size - tail_bytes))
             lines = f.read().decode("utf-8", "ignore").splitlines()
     except OSError:
-        return 0
+        return LastUsage()
     for line in reversed(lines):
         if '"usage"' not in line:
             continue
@@ -167,5 +177,12 @@ def last_context(transcript: str | Path, tail_bytes: int = 400_000) -> int:
         u = (d.get("message") or {}).get("usage") or {}
         ctx = (u.get("input_tokens") or 0) + (u.get("cache_creation_input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0)
         if ctx:
-            return ctx
-    return 0
+            cc = u.get("cache_creation") or {}
+            ttl = 300 if cc.get("ephemeral_5m_input_tokens") and not cc.get("ephemeral_1h_input_tokens") else 3600
+            return LastUsage(ctx, d.get("timestamp", ""), ttl)
+    return LastUsage()
+
+
+def last_context(transcript: str | Path, tail_bytes: int = 400_000) -> int:
+    """会話ログの末尾から、直近の API 呼び出しが読んだ文脈の大きさを返す。hook から使う。"""
+    return last_usage(transcript, tail_bytes).context

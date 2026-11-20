@@ -111,6 +111,8 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(s["autoCompactWindow"], 300_000)
             self.assertEqual(len(s["hooks"]["UserPromptSubmit"]), 2)  # 既存 1 + 自分 1(2 回実行しても増えない)
             self.assertEqual(len(s["hooks"]["PreToolUse"]), 1)
+            ours = [h["command"] for h in s["hooks"]["UserPromptSubmit"][1]["hooks"]]
+            self.assertTrue(any(c.endswith("/hooks/ttl_guard.py") for c in ours))
             self.assertNotIn("tokenguard", s)
             self.assertTrue((Path(home) / ".claude/skills/handoff/SKILL.md").exists())
             subprocess.run([sys.executable, str(ROOT / "install.py"), "--uninstall"], env=env, check=True, capture_output=True)
@@ -159,3 +161,133 @@ class CompactCountTest(unittest.TestCase):
             p.write_text(asst("m1", 10) + line(type="system", subtype="compact_boundary")
                          + line(type="user", isCompactSummary=True, message={"content": "要約"}))
             self.assertEqual(T.parse(p).compactions, 1)
+
+
+def call(ts, write, read, w5=0):
+    return T.Call(ts, "m", 0, write, read, 10, w5)
+
+
+class CacheTest(unittest.TestCase):
+    def test_classify(self):
+        from tokenguard.cache import classify
+        s = T.Session(sid="x", path=Path("x"))
+        s.calls = [call("2026-11-20T10:00:00Z", 70_000, 0),          # 開始
+                   call("2026-11-20T10:01:00Z", 2_000, 70_000),      # 増分
+                   call("2026-11-20T12:00:00Z", 72_000, 0),          # 2 時間空いて書き直し
+                   call("2026-11-20T12:01:00Z", 74_000, 0),          # TTL 内の書き直し
+                   call("2026-11-20T12:02:00Z", 30_000, 0)]          # compact で縮んだ
+        self.assertEqual(classify(s), ["start", "incremental", "ttl", "break", "compact"])
+
+    def test_five_minute_ttl(self):
+        from tokenguard.cache import classify
+        s = T.Session(sid="x", path=Path("x"))
+        s.calls = [call("2026-11-20T10:00:00Z", 50_000, 0, w5=50_000),
+                   call("2026-11-20T10:10:00Z", 51_000, 0, w5=51_000)]
+        self.assertEqual(classify(s), ["start", "ttl"])
+
+    def test_last_usage_ttl(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "t.jsonl"
+            p.write_text(line(type="assistant", timestamp="2026-11-20T10:00:00Z", message={"id": "m", "usage": {
+                "input_tokens": 1, "cache_creation_input_tokens": 10, "cache_read_input_tokens": 0,
+                "cache_creation": {"ephemeral_5m_input_tokens": 10, "ephemeral_1h_input_tokens": 0}}}))
+            u = T.last_usage(p)
+            self.assertEqual((u.context, u.ts, u.ttl), (11, "2026-11-20T10:00:00Z", 300))
+            p.write_text(asst("m1", 1000))
+            self.assertEqual(T.last_usage(p).ttl, 3600)
+
+
+class SimulateTTLTest(unittest.TestCase):
+    def make(self):
+        # 300k まで育った会話に、3 時間空けて戻り、さらに 50 回続ける
+        s = T.Session(sid="x", path=Path("x"))
+        ctx = 70_000
+        s.calls.append(call("2026-11-20T10:00:00Z", ctx, 0))
+        for i in range(115):
+            s.calls.append(call(f"2026-11-20T10:{i // 60 + 1:02d}:{i % 60:02d}Z", 2_000, ctx))
+            ctx += 2_000
+        s.calls.append(call("2026-11-20T14:00:00Z", ctx + 1_000, 0))
+        ctx += 1_000
+        for i in range(50):
+            s.calls.append(call(f"2026-11-20T14:01:{i:02d}Z", 1_000, ctx))
+            ctx += 1_000
+        return s
+
+    def test_clear_on_ttl_saves(self):
+        from tokenguard.simulate import Scenario, simulate
+        s = self.make()
+        base = simulate([s], Scenario("real", None))
+        self.assertAlmostEqual(base.weighted, s.weighted, delta=1)
+        self.assertEqual(base.ttl_events, 1)
+        r = simulate([s], Scenario("clear", None, clear_on_ttl=1.0))
+        self.assertEqual(r.clears, 1)
+        self.assertLess(r.weighted, base.weighted * 0.8)  # 書き直し 60 万と、その後の読み直しが減る
+        # 下限より小さい文脈なら止めない
+        r = simulate([s], Scenario("clear", None, clear_on_ttl=1.0, ttl_min=1_000_000))
+        self.assertEqual(r.clears, 0)
+
+    def test_share_is_spread_across_sessions(self):
+        from tokenguard.simulate import Scenario, simulate
+        r = simulate([self.make() for _ in range(4)], Scenario("half", None, clear_on_ttl=0.5))
+        self.assertEqual((r.ttl_events, r.clears), (4, 2))
+
+    def test_rewrite_is_capped_by_simulated_context(self):
+        # 窓で文脈が小さくなっていれば、cache 切れの書き直しも小さくなる
+        from tokenguard.simulate import Scenario, simulate
+        s = self.make()
+        r = simulate([s], Scenario("200k", 200_000))
+        self.assertLess(r.weighted, s.weighted)
+
+
+class TTLGuardTest(unittest.TestCase):
+    def run_hook(self, payload, env):
+        r = subprocess.run([sys.executable, str(ROOT / "hooks" / "ttl_guard.py")], input=json.dumps(payload),
+                           capture_output=True, text=True, env={**os.environ, **env}, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout) if r.stdout.strip() else None
+
+    def transcript(self, d, ago, ctx=150_000, five_min=False):
+        import datetime as dt
+        ts = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=ago)).isoformat().replace("+00:00", "Z")
+        cc = {"ephemeral_5m_input_tokens": 100, "ephemeral_1h_input_tokens": 0} if five_min else {}
+        p = Path(d) / f"t{ago}{ctx}{five_min}.jsonl"
+        p.write_text(line(type="assistant", timestamp=ts, message={"id": "m", "usage": {
+            "input_tokens": 0, "cache_creation_input_tokens": 100, "cache_read_input_tokens": ctx - 100,
+            "cache_creation": cc}}))
+        return str(p)
+
+    def test_blocks_once_after_expiry(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = {"TOKENGUARD_STATE": d}
+            tp = self.transcript(d, 2 * 3600)
+            out = self.run_hook({"transcript_path": tp, "session_id": "a", "prompt": "次の件"}, env)
+            self.assertEqual(out["decision"], "block")
+            self.assertIn("150k", out["reason"])
+            self.assertIn("/clear", out["reason"])
+            # 同じ cache 切れでは 2 回目を通す
+            self.assertIsNone(self.run_hook({"transcript_path": tp, "session_id": "a", "prompt": "次の件"}, env))
+
+    def test_passes(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = {"TOKENGUARD_STATE": d}
+            old = self.transcript(d, 2 * 3600)
+            cases = [
+                ({"transcript_path": self.transcript(d, 600), "prompt": "x"}, env),            # TTL 内
+                ({"transcript_path": self.transcript(d, 7200, 50_000), "prompt": "x"}, env),   # 文脈が小さい
+                ({"transcript_path": old, "prompt": "<task-notification>x"}, env),            # 自動の差し込み
+                ({"transcript_path": old, "prompt": "/compact"}, env),                        # コマンド
+                ({"transcript_path": old, "prompt": "x"}, {**env, "TOKENGUARD_TTL_GUARD": "off"}),
+            ]
+            for i, (payload, e) in enumerate(cases):
+                self.assertIsNone(self.run_hook({**payload, "session_id": f"s{i}"}, e), payload)
+
+    def test_pasted_and_five_minute_ttl(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = {"TOKENGUARD_STATE": d}
+            out = self.run_hook({"transcript_path": self.transcript(d, 7200), "session_id": "p",
+                                 "prompt": '<pasted_content id="1">\nlog\n</pasted_content id="1">'}, env)
+            self.assertEqual(out["decision"], "block")
+            out = self.run_hook({"transcript_path": self.transcript(d, 600, five_min=True), "session_id": "f",
+                                 "prompt": "x"}, env)
+            self.assertEqual(out["decision"], "block")
+            self.assertIn("10 分", out["reason"])

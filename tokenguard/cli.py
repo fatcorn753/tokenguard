@@ -66,6 +66,13 @@ def cmd_report(a) -> None:
         print(f"  {s.sid[:8]} {s.weighted / W:5.1%} 呼出{len(s.calls):5d} 平均文脈{_m(avg):>5s} 最大{_m(s.peak):>5s}"
               f" compact{s.compactions:2d} 画像{s.images:4d}  {s.title}")
 
+    from .cache import breakdown
+    print("\n## cache write の原因(書き直しは 2 倍の単価)")
+    names = {"start": "会話の開始", "ttl": "cache 切れ(TTL 超過)", "compact": "compact 直後",
+             "break": "TTL 内の書き直し", "incremental": "増分(正常)"}
+    for k, (n, tok, wt) in breakdown(ss).items():
+        print(f"  {names[k]:18s} {int(n):6d}回 {_m(tok):>7s}  費用の {wt / W:5.1%}")
+
     tools = collections.defaultdict(lambda: [0, 0])
     for s in ss:
         for k, (n, size) in s.tools.items():
@@ -88,6 +95,11 @@ def diagnose(ss, calls, W) -> list[str]:
     long_ = [s for s in ss if len(s.calls) > 500]
     if long_:
         out.append(f"500 回超の会話が {len(long_)} 件(費用の {sum(s.weighted for s in long_) / W:.0%})。区切りで分ける")
+    from .cache import breakdown
+    ttl = breakdown(ss)["ttl"]
+    if ttl[2] / W > 0.05:
+        out.append(f"cache 切れ(1 時間以上空けてから再開)の書き直しが費用の {ttl[2] / W:.0%}。"
+                   "長い会話へ時間を空けて戻るときは、別件なら /clear か新しい会話で始める(ttl_guard hook)")
     imgs = sum(s.images for s in ss)
     if imgs > 100:
         out.append(f"画像が {imgs} 枚、文脈に入った。スクリーンショットより read_page/get_page_text、画像は縮小して読む")
@@ -110,7 +122,7 @@ def cmd_trend(a) -> None:
 
 
 def cmd_simulate(a) -> None:
-    from .simulate import scenarios, simulate
+    from .simulate import scenarios, simulate, ttl_scenarios
     ss = T.load(a.days)
     print(f"# 直近 {a.days:g} 日の会話ログを、autoCompactWindow を変えて再計算")
     print("  画像縮小・/handoff による分割は含めない(節約は少なめに出る)。品質の変化は測れない\n")
@@ -120,10 +132,13 @@ def cmd_simulate(a) -> None:
             if sc.window is None and rows:
                 continue
             rows.append((sc, simulate(ss, sc)))
+        if a.clear_on_ttl:
+            rows += [(sc, simulate(ss, sc)) for sc in ttl_scenarios(w, a.clear_on_ttl)]
     base = rows[0][1].weighted
-    print(f"{'条件':40s} {'重み付き':>9s} {'差':>6s} {'平均文脈':>8s} {'compact':>8s}")
+    print(f"{'条件':40s} {'重み付き':>9s} {'差':>6s} {'平均文脈':>8s} {'compact':>8s} {'cache切れ':>9s} {'clear':>6s}")
     for sc, r in rows:
-        print(f"{sc.name:40s} {_m(r.weighted):>9s} {r.weighted / base - 1:+6.0%} {_m(r.ctx_sum / max(r.calls, 1)):>8s} {r.compactions:8d}")
+        print(f"{sc.name:40s} {_m(r.weighted):>9s} {r.weighted / base - 1:+6.0%} {_m(r.ctx_sum / max(r.calls, 1)):>8s}"
+              f" {r.compactions:8d} {r.ttl_events:9d} {r.clears:6d}")
 
 
 def cmd_bench(a) -> None:
@@ -181,6 +196,8 @@ def main(argv=None) -> None:
     si = sp.add_parser("simulate")
     si.add_argument("--days", type=float, default=14)
     si.add_argument("--window", type=int, nargs="+", default=[200_000, 300_000])
+    si.add_argument("--clear-on-ttl", type=float, nargs="*", default=[],
+                    help="cache 切れの後に /clear する割合(例: 0.25 0.5 1)。ttl_guard の効果の見積もり")
     b = sp.add_parser("bench", help="記憶テスト(claude -p を実際に動かす。使用量を消費する)")
     b.add_argument("--window", type=int, nargs="+", default=[1_000_000, 300_000, 200_000])
     b.add_argument("--reps", type=int, default=1)
