@@ -116,13 +116,19 @@ def blind_review(a, diff: str) -> dict:
                         "--disallowedTools", "Bash", "Read", "Edit", "Write", "Glob", "Grep", "WebFetch", "WebSearch",
                         "Task"], cwd=cwd, capture_output=True, text=True, timeout=1800,
                        env={**os.environ, "TOKENGUARD_CTX_STEPS": "999999999"})
-    out = json.loads(r.stdout) if r.stdout.strip() else {}
+    try:
+        out = json.loads(r.stdout) if r.stdout.strip() else {}
+    except ValueError:
+        out = {}
     text = out.get("result", "")
     m = re.search(r"\{.*\}", text, re.S)
     try:
-        got = json.loads(m.group(0)) if m else {}
+        got = json.loads(m.group(0)) if m else None
     except ValueError:
-        got = {}
+        got = None
+    if r.returncode or out.get("is_error") or not isinstance(got, dict):
+        # 失敗(使用量の上限など)を欠陥 0 件と取り違えないよう、件数を出さずに印を付ける
+        return {"error": (text or r.stderr or r.stdout)[-300:], "cost_usd": out.get("total_cost_usd", 0)}
     res = {k: len(got.get(k) or []) for k in REVIEW_KEYS}
     res["total"] = sum(res.values())
     res["items"] = {k: got.get(k) or [] for k in REVIEW_KEYS}
