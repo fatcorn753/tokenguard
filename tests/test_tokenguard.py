@@ -291,3 +291,55 @@ class TTLGuardTest(unittest.TestCase):
                                  "prompt": "x"}, env)
             self.assertEqual(out["decision"], "block")
             self.assertIn("10 分", out["reason"])
+
+
+sys.path.insert(0, str(ROOT / "bench"))
+import defects  # noqa: E402
+
+
+class DefectsTest(unittest.TestCase):
+    """bench/defects.py: base からの増分だけを欠陥として数える。"""
+
+    def git(self, *a):
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=self.wt,
+                       check=True, capture_output=True)
+
+    def setUp(self):
+        self.d = tempfile.TemporaryDirectory()
+        self.addCleanup(self.d.cleanup)
+        self.wt = Path(self.d.name)
+        self.git("init", "-q")
+        # base の時点ですでにある未使用 import は数えない
+        (self.wt / "a.py").write_text("import os\n\n\ndef used():\n    return 1\n")
+        (self.wt / "b.py").write_text("from a import used\n\nprint(used())\n")
+        self.git("add", ".")
+        self.git("commit", "-qm", "base")
+        self.base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.wt, capture_output=True,
+                                   text=True).stdout.strip()
+
+    def test_counts_only_new_defects(self):
+        (self.wt / "a.py").write_text(
+            "import os\nimport json\nfrom typing import Any  # noqa: F401\n\n\n"
+            "def used():\n    #\n    return 1\n\n\ndef orphan():\n    return 2\n\n\n"
+            "def helper():\n    return 3\n\n\nX: 'Any' = helper()\n")
+        (self.wt / "new.py").write_text("import sys\n#  \nprint(sys.argv)\n")
+        r = defects.count(self.wt, self.base, ["a.py"])
+        self.assertEqual(r["empty_comments"], 2)
+        self.assertEqual(r["unused_imports"], 1)  # json だけ(os は base から、Any は noqa)
+        self.assertEqual(r["unused_defs"], 1)  # orphan だけ
+        self.assertEqual(r["extra_files"], ["new.py"])
+        self.assertEqual(r["total"], 5)
+        self.assertEqual(r["files_changed"], 2)
+
+    def test_excluded_files_are_not_counted(self):
+        (self.wt / "test_x.py").write_text("import json\n#\n")
+        r = defects.count(self.wt, self.base, [], exclude=["test_x.py"])
+        self.assertEqual(r["total"], 0)
+        diff = "diff --git a/a.py b/a.py\n+x\ndiff --git a/test_x.py b/test_x.py\n+y\n"
+        self.assertEqual(defects.strip_files(diff, ["test_x.py"]), "diff --git a/a.py b/a.py\n+x\n")
+
+    def test_clean_change_has_no_defects(self):
+        (self.wt / "a.py").write_text("import os\n\n\ndef used():\n    # 理由のあるコメント\n    return 2\n")
+        r = defects.count(self.wt, self.base, ["a.py"])
+        self.assertEqual(r["total"], 0)
+        self.assertEqual(r["lines_changed"], 3)
