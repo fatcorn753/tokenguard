@@ -104,6 +104,8 @@ def count(wt: Path, base: str, target_files: list[str], exclude: list[str] = ())
     res = {"files_changed": len(files), "lines_changed": 0, "empty_comments": empty_comments(diff),
            "unused_imports": 0, "unused_defs": 0,
            "extra_files": sorted(set(files) - set(target_files))}
+    res["todos"] = sum(1 for line in diff.splitlines()
+                       if line.startswith("+") and not line.startswith("+++") and re.search(r"\b(TODO|FIXME|XXX)\b", line))
     res["lines_changed"] = sum(1 for line in diff.splitlines()
                                if line[:1] in "+-" and not line.startswith(("+++", "---")))
     now_corpus, base_corpus = _all_py(wt, None), _all_py(wt, base)
@@ -115,5 +117,45 @@ def count(wt: Path, base: str, target_files: list[str], exclude: list[str] = ())
         old = _git(wt, "show", f"{base}:{p}")
         res["unused_imports"] += max(0, _unused_imports(new) - _unused_imports(old))
         res["unused_defs"] += max(0, _unused_defs(_defs(new), now_corpus) - _unused_defs(_defs(old), base_corpus))
-    res["total"] = res["empty_comments"] + res["unused_imports"] + res["unused_defs"] + len(res["extra_files"])
+    res["total"] = res["todos"] + res["empty_comments"] + res["unused_imports"] + res["unused_defs"] + len(res["extra_files"])
     return res
+
+
+# ruff と pyright は依存に加えず、手元にある実行ファイルを使う(無ければ数えない)
+LINT_BIN = Path(__import__("os").environ.get("BENCH_LINT_BIN", Path.home() / "artistme/python/casino-bot/.venv/bin"))
+RUFF_ARGS = ["check", "--no-cache", "--isolated", "--select", "E,F,W,B", "--ignore", "E501", "--output-format", "json"]
+
+
+def _lint_counts(root: Path, files: list[str]) -> dict:
+    files = [f for f in files if f.endswith(".py") and (root / f).is_file()]
+    out = {"ruff": 0, "pyright": 0}
+    if not files:
+        return out
+    if (LINT_BIN / "ruff").exists():
+        r = subprocess.run([str(LINT_BIN / "ruff"), *RUFF_ARGS, *files], cwd=root, capture_output=True, text=True)
+        try:
+            out["ruff"] = len(__import__("json").loads(r.stdout or "[]"))
+        except ValueError:
+            out["ruff"] = None
+    if (LINT_BIN / "pyright").exists():
+        r = subprocess.run([str(LINT_BIN / "pyright"), "--outputjson", *files], cwd=root, capture_output=True,
+                           text=True, timeout=300)
+        try:
+            out["pyright"] = __import__("json").loads(r.stdout)["summary"]["errorCount"]
+        except (ValueError, KeyError):
+            out["pyright"] = None
+    return out
+
+
+def lint_delta(wt: Path, base: str, exclude: list[str] = ()) -> dict:
+    """変更した .py の ruff・pyright の指摘数を、base の同じファイルと比べた増分で返す。"""
+    files = [p for p in changed_files(wt, base) if p not in exclude]
+    now = _lint_counts(wt, files)
+    base_wt = wt.parent / f"{wt.name}-lintbase"
+    _git(wt, "worktree", "add", "--detach", str(base_wt), base)
+    try:
+        before = _lint_counts(base_wt, files)
+    finally:
+        _git(wt, "worktree", "remove", "--force", str(base_wt))
+    return {k: (None if now[k] is None or before[k] is None else now[k] - before[k]) for k in now} | {
+        "ruff_now": now["ruff"], "pyright_now": now["pyright"]}

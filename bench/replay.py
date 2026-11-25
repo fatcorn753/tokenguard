@@ -64,9 +64,56 @@ def task_text(a) -> str:
 
 def solo_prompt(a) -> tuple[str, list[str]]:
     prompt = (f"このリポジトリに次の変更を実装して。\n\n{task_text(a)}\n\n"
-              f"{a.tests[0]} は完成形のテスト。テストは変更せず、すべて通るように実装すること。"
-              f"最後に python3 -m unittest で通ることを確かめ、変更点を 3 行で報告して。")
+              + (f"{a.tests[0]} はテストの一部。ほかに見せていないテストでも採点するので、依頼の内容をすべて満たすこと。"
+                 "テストは変更せず、すべて通るように実装すること。" if a.hide_half else
+                 f"{a.tests[0]} は完成形のテスト。テストは変更せず、すべて通るように実装すること。")
+              + "最後に python3 -m unittest で通ることを確かめ、変更点を 3 行で報告して。")
     return prompt, TOOLS
+
+
+# agy に許すコマンド。agy の command(...) は語の前方一致で、許可にないコマンドを headless で
+# 求めると実行全体が無出力で止まる(2026-11-24、agy 1.5.16)。deny は allow より優先されるので
+# 「それ以外を禁止」とは書けず、使えるコマンドをプロンプトでも伝える。
+AGY_COMMANDS = ["python3 -m unittest", "python3 -m py_compile", "git diff", "git status", "git log", "git show",
+                "git ls-files", "ls", "cat", "head", "tail", "grep", "wc", "pwd", "cd", "echo", "python3 --version"]
+
+
+def agy_settings(wt: Path) -> dict:
+    """書き込みは作業ツリーの中だけに許す。write_file(<dir>) はその配下を含む(外への書き込みは止まることを確認)。"""
+    return {"agentMode": "",
+            "permissions": {"allow": [f"write_file({wt})"] + [f"command({c})" for c in AGY_COMMANDS],
+                            "deny": ["mcp(*)"]}}
+
+
+def agy_prompt(a) -> str:
+    return (solo_prompt(a)[0] + "\nシェルで使えるコマンドは次だけ(ほかのコマンドは実行が止まるので使わない): "
+            + ", ".join(AGY_COMMANDS) + "。1 回に 1 つのコマンドだけを実行し、; や && や | や $( ) でつながない。"
+            "ファイルの読み書きと検索は専用のツールを使う。")
+
+
+def parse_agy_stream(stdout: str) -> dict:
+    """stream-json の result を返す。許可外で止まったコマンドを調べられるよう、失敗したコマンドも集める。"""
+    res, failed = {}, []
+    for line in stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if ev.get("event") == "result":
+            res = ev.get("result") or {}
+        su = ev.get("step_update") or {}
+        if su.get("state") == "ERROR" and su.get("tool_name") == "run_command":
+            failed.append(((su.get("tool_info") or {}).get("parameters") or {}).get("CommandLine", "")[:200])
+    if failed:
+        res["failed_commands"] = failed
+    return res
+
+
+def run_agy(prompt: str, model: str, cwd: Path, settings: dict, timeout: int) -> tuple[dict, str]:
+    r = subprocess.run(["agy", "-p", prompt, "--model", model, "--output-format", "stream-json",
+                        "--print-timeout", f"{timeout - 30}s", "--settings", json.dumps(settings)],
+                       cwd=cwd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+    return parse_agy_stream(r.stdout), (r.stderr or "")[-300:]
 
 
 def parent_prompt(a, spec_dir: Path) -> tuple[str, list[str]]:
@@ -110,30 +157,50 @@ def blind_review(a, diff: str) -> dict:
         "確信があるものだけを、1 件 1 行の短い日本語で挙げる。好みの問題は挙げない。\n"
         f"次のキーを持つ JSON だけを返す: {json.dumps(REVIEW_KEYS)}(値は文字列の配列)\n\n"
         f"依頼:\n{task_text(a)}\n\n差分:\n{diff[:200_000]}")
-    cwd = WORK / f"review-{int(time.time() * 1000)}"
+    cwd = WORK / f"review-{time.time_ns()}"
     cwd.mkdir(parents=True)
-    r = subprocess.run(["claude", "-p", prompt, "--model", a.review_model, "--output-format", "json",
-                        "--disallowedTools", "Bash", "Read", "Edit", "Write", "Glob", "Grep", "WebFetch", "WebSearch",
-                        "Task"], cwd=cwd, capture_output=True, text=True, timeout=1800,
-                       env={**os.environ, "TOKENGUARD_CTX_STEPS": "999999999"})
-    try:
-        out = json.loads(r.stdout) if r.stdout.strip() else {}
-    except ValueError:
-        out = {}
-    text = out.get("result", "")
+    if a.review_runner == "agy":
+        # agy の Claude は Claude の使用量に数えられない(2026-11-24 確認)ので、採点の費用を Claude 側から外せる
+        out, err = run_agy(prompt, a.review_model, cwd, {"agentMode": "", "permissions": {
+            "deny": ["command(*)", "write_file(*)", "mcp(*)"]}}, 1800)
+        text, failed = out.get("response", ""), out.get("status") != "SUCCESS"
+        out = {"total_cost_usd": 0, "stderr": err}
+    else:
+        r = subprocess.run(["claude", "-p", prompt, "--model", a.review_model, "--output-format", "json",
+                            "--disallowedTools", "Bash", "Read", "Edit", "Write", "Glob", "Grep", "WebFetch",
+                            "WebSearch", "Task"], cwd=cwd, capture_output=True, text=True, timeout=1800,
+                           env={**os.environ, "TOKENGUARD_CTX_STEPS": "999999999"})
+        try:
+            out = json.loads(r.stdout) if r.stdout.strip() else {}
+        except ValueError:
+            out = {}
+        text, failed = out.get("result", ""), bool(r.returncode or out.get("is_error"))
+        out["stderr"] = r.stderr
     m = re.search(r"\{.*\}", text, re.S)
     try:
         got = json.loads(m.group(0)) if m else None
     except ValueError:
         got = None
-    if r.returncode or out.get("is_error") or not isinstance(got, dict):
+    if failed or not isinstance(got, dict):
         # 失敗(使用量の上限など)を欠陥 0 件と取り違えないよう、件数を出さずに印を付ける
-        return {"error": (text or r.stderr or r.stdout)[-300:], "cost_usd": out.get("total_cost_usd", 0)}
+        return {"error": (text or out.get("stderr", ""))[-300:], "cost_usd": out.get("total_cost_usd", 0)}
     res = {k: len(got.get(k) or []) for k in REVIEW_KEYS}
     res["total"] = sum(res.values())
     res["items"] = {k: got.get(k) or [] for k in REVIEW_KEYS}
     res["cost_usd"] = out.get("total_cost_usd", 0)
     return res
+
+
+def review_votes(a, diff: str) -> dict:
+    """独立レビューを --review-votes 回まわし、指摘数の中央値を代表値にする。1 回の採点はぶれが大きいため。"""
+    votes = [blind_review(a, diff) for _ in range(a.review_votes)]
+    ok = sorted((v for v in votes if "error" not in v), key=lambda v: v["total"])
+    if not ok:
+        return {"error": votes[-1].get("error", ""), "votes": votes}
+    med = ok[len(ok) // 2]
+    return {**{k: med[k] for k in REVIEW_KEYS + ["total"]}, "totals": [v["total"] for v in ok],
+            "bugs": [v["bug"] for v in ok], "failed_votes": len(votes) - len(ok), "items": med["items"],
+            "cost_usd": round(sum(v.get("cost_usd", 0) for v in votes), 4)}
 
 
 def worker_totals(log_dir: Path) -> dict:
@@ -148,15 +215,94 @@ def worker_totals(log_dir: Path) -> dict:
     return out
 
 
+def hide_half(path: Path) -> list[str]:
+    """テストクラスごとに、test メソッドを 1 つおきに消す。見せるのは半分、採点は全部で行う。
+
+    全部を見せると、どの条件もテストが通るまで直して満点になり差が出なかった(2026-11-24)。
+    消したテストの名前を返す。行番号で切り取るので、残りの書式とコメントはそのまま残る。
+    """
+    import ast
+    src = path.read_text()
+    lines = src.splitlines(keepends=True)
+    cut, names = [], []
+    for cls in ast.walk(ast.parse(src)):
+        if not isinstance(cls, ast.ClassDef):
+            continue
+        tests = [n for n in cls.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 and n.name.startswith("test")]
+        for n in tests[1::2]:
+            start = min([n.lineno] + [d.lineno for d in n.decorator_list]) - 1
+            cut.append((start, n.end_lineno))
+            names.append(f"{cls.name}.{n.name}")
+    for start, end in sorted(cut, reverse=True):
+        del lines[start:end]
+    path.write_text("".join(lines))
+    return names
+
+
+def show_tests(a, wt: Path, res: dict) -> None:
+    sh("git", "checkout", a.target, "--", *a.tests, cwd=wt)
+    if a.hide_half:
+        res["hidden_tests"] = hide_half(wt / a.tests[0])
+    # 書き換えの判定は、見せた版と比べる
+    res["_shown"] = {t: (wt / t).read_text() for t in a.tests}
+
+
+def score(a, wt: Path, res: dict, target_files: list[str]) -> str:
+    """テストの書き換えを無効にしてから採点し、テストを除いた差分を返す。"""
+    shown = res.pop("_shown", {})
+    res["tests_modified"] = any((wt / t).read_text() != v if (wt / t).exists() else True for t, v in shown.items())
+    sh("git", "checkout", a.target, "--", *a.tests, cwd=wt)
+    res["passed"], res["ran"] = run_tests(wt, a.tests)
+    res["defects_after"] = defects.count(wt, a.base, target_files, a.tests)
+    res["lint"] = defects.lint_delta(wt, a.base, a.tests)
+    diff = defects.strip_files(sh("git", "diff", a.base, cwd=wt).stdout, a.tests)
+    # 条件名を伏せた事後の採点(bench/grade.py)のために、テストを除いた差分を残す
+    if a.log:
+        d = Path(a.log).expanduser().parent / "diffs"
+        d.mkdir(parents=True, exist_ok=True)
+        res["diff_file"] = str(d / f"{wt.name}.diff")
+        Path(res["diff_file"]).write_text(diff)
+    return diff
+
+
+def agy_trial(a, wt: Path, res: dict) -> dict:
+    """agy(Gemini など)に 1 人で実装させる。Claude 側の消費はないので、agy が返すトークン数だけを記録する。"""
+    show_tests(a, wt, res)
+    target_files = sh("git", "diff", "--name-only", a.base, a.target, cwd=a.repo).stdout.split()
+    t0 = time.time()
+    try:
+        out, err = run_agy(agy_prompt(a), a.model, wt.resolve(), agy_settings(wt.resolve()), a.agy_timeout)
+    except subprocess.TimeoutExpired:
+        out, err = {"status": "TIMEOUT"}, ""
+    res["seconds"] = round(time.time() - t0)
+    usage = out.get("usage") or {}
+    res.update(agy_status=out.get("status"), agy_denied=out.get("denied_actions"),
+               agy_failed_commands=out.get("failed_commands"),
+               agy_tokens_in=usage.get("input_tokens"), agy_tokens_out=usage.get("output_tokens"),
+               agy_thinking=usage.get("thinking_tokens"), agy_cache_read=usage.get("cache_read_tokens"),
+               agy_stderr=err if not out.get("response") else "", cost_usd=0)
+    final_diff = score(a, wt, res, target_files)
+    if not a.no_review:
+        res["review_after"] = review_votes(a, final_diff)
+    return res
+
+
 def trial(a, window: int, cond: str = "solo") -> dict:
-    stamp = f"{Path(a.repo).name}-{cond}-{window // 1000}k-{int(time.time())}"
+    # 条件を並行に回すので、同じ秒に始まっても衝突しないよう ns とモデル名を入れる
+    stamp = f"{Path(a.repo).name}-{cond}-{re.sub(r'[^\w.-]', '_', a.model)}-{window // 1000}k-{time.time_ns()}"
     wt = WORK / stamp
     side = WORK / f"{stamp}-side"  # 仕様書と作業役のログ。作業ツリーの外に置き、採点の差分に混ぜない
     wt.parent.mkdir(parents=True, exist_ok=True)
-    sh("git", "worktree", "add", "--detach", str(wt), a.base, cwd=a.repo)
-    res = {"cond": cond, "window": window, "model": a.model, "base": a.base, "target": a.target}
+    for i in range(5):  # 同じリポジトリへの worktree add が並ぶと、ロックで失敗することがある
+        if sh("git", "worktree", "add", "--detach", str(wt), a.base, cwd=a.repo, check=False).returncode == 0:
+            break
+        time.sleep(2 + i * 3)
+    res = {"cond": cond, "hide_half": a.hide_half, "repo": a.repo, "window": window, "model": a.model, "effort": a.effort, "base": a.base, "target": a.target}
     try:
-        sh("git", "checkout", a.target, "--", *a.tests, cwd=wt)
+        if cond == "agy":
+            return agy_trial(a, wt, res)
+        show_tests(a, wt, res)
         target_files = sh("git", "diff", "--name-only", a.base, a.target, cwd=a.repo).stdout.split()
         env = {**os.environ, "TOKENGUARD_CTX_STEPS": "999999999"}
         if cond == "parent":
@@ -170,25 +316,22 @@ def trial(a, window: int, cond: str = "solo") -> dict:
         else:
             prompt, tools = solo_prompt(a)
         t0 = time.time()
-        r = subprocess.run(["claude", "-p", prompt, "--model", a.model, "--output-format", "json",
+        effort = ["--effort", a.effort] if a.effort else []
+        r = subprocess.run(["claude", "-p", prompt, "--model", a.model, *effort, "--output-format", "json",
                             "--allowedTools", *tools, "--settings", json.dumps({"autoCompactWindow": window})],
                            cwd=wt, capture_output=True, text=True, timeout=5400, env=env)
         res["seconds"] = round(time.time() - t0)
         out = json.loads(r.stdout) if r.stdout.strip() else {}
         res["cost_usd"] = out.get("total_cost_usd", 0)
         sid = out.get("session_id")
-        res["tests_modified"] = bool(sh("git", "diff", "--name-only", a.target, "--", *a.tests, cwd=wt).stdout.strip())
-        sh("git", "checkout", a.target, "--", *a.tests, cwd=wt)  # テストの書き換えを無効にする
-        res["passed"], res["ran"] = run_tests(wt, a.tests)
-        res["defects_after"] = defects.count(wt, a.base, target_files, a.tests)
-        final_diff = defects.strip_files(sh("git", "diff", a.base, cwd=wt).stdout, a.tests)
+        final_diff = score(a, wt, res, target_files)
         if cond == "parent":
             res.update(worker_totals(side / "log"))
             first = side / "log" / "call1.diff"
             if first.exists() and not a.no_review:
-                res["review_before"] = blind_review(a, defects.strip_files(first.read_text(), a.tests))
+                res["review_before"] = review_votes(a, defects.strip_files(first.read_text(), a.tests))
         if not a.no_review:
-            res["review_after"] = blind_review(a, final_diff)
+            res["review_after"] = review_votes(a, final_diff)
         if sid and (hits := list(T.PROJECTS.rglob(f"{sid}.jsonl"))):
             s = T.parse(hits[0])
             res.update(weighted=round(s.weighted), calls=len(s.calls), peak=s.peak, compactions=s.compactions)
@@ -206,17 +349,25 @@ def main() -> None:
     ap.add_argument("--base", required=True, help="作業を始める commit(対象の親)")
     ap.add_argument("--target", required=True, help="再現する commit(テストと依頼文をここから取る)")
     ap.add_argument("--tests", required=True, nargs="+", help="完成形のテスト。先頭のファイルを unittest で回す")
-    ap.add_argument("--cond", nargs="+", default=["solo"], choices=["solo", "parent"])
+    ap.add_argument("--cond", nargs="+", default=["solo"], choices=["solo", "parent", "agy"],
+                    help="agy: --model の agy モデル(例 gemini-4-neon-high)で 1 人で実装させる")
     ap.add_argument("--window", type=int, nargs="+", default=[1_000_000, 300_000, 200_000])
     ap.add_argument("--reps", type=int, default=1)
     ap.add_argument("--model", default="sonnet")
+    ap.add_argument("--effort", default="", help="claude -p の --effort(low/medium/high など)。agy はモデル名に含める")
+    ap.add_argument("--agy-timeout", type=int, default=1800)
+    ap.add_argument("--hide-half", action="store_true", help="完成形のテストを半分だけ見せる(採点は全部)")
     ap.add_argument("--keep", action="store_true", help="作業ツリーを消さずに残す")
     ap.add_argument("--review-model", default="sonnet", help="独立レビューのモデル")
+    ap.add_argument("--review-runner", default="claude", choices=["claude", "agy"],
+                    help="agy なら --review-model に agy のモデル名(例 claude-opus-5-5-high)を渡す")
+    ap.add_argument("--review-votes", type=int, default=1, help="独立レビューの回数(中央値を採る)")
     ap.add_argument("--no-review", action="store_true", help="独立レビューを省く")
+    ap.add_argument("--log", default="", help="結果の JSONL(既定は bench 置き場の replay_results.jsonl)")
     a = ap.parse_args()
     a.repo = str(Path(a.repo).expanduser())
     WORK.mkdir(parents=True, exist_ok=True)
-    log = WORK.parent / "replay_results.jsonl"
+    log = Path(a.log).expanduser() if a.log else WORK.parent / "replay_results.jsonl"
     for _ in range(a.reps):
         for w in a.window:
             for cond in a.cond:
